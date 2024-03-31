@@ -1535,248 +1535,57 @@ pub inline fn hasDynamicLinker(self: Target) bool {
         .plan9,
         .other,
         => return false,
+
         else => return true,
     }
 }
 
 pub const DynamicLinker = struct {
-    /// Contains the memory used to store the dynamic linker path. This field
-    /// should not be used directly. See `get` and `set`. This field exists so
-    /// that this API requires no allocator.
-    buffer: [255]u8,
+    /// This field should not be used directly.
+    /// See `get` and `set`.
+    /// This field exists so that this API requires no allocator.
+    _inner: std.BoundedArray(u8, 255),
 
-    /// Used to construct the dynamic linker path. This field should not be used
-    /// directly. See `get` and `set`.
-    max_byte: ?u8,
-
-    pub const none: DynamicLinker = .{
-        .buffer = undefined,
-        .max_byte = null,
-    };
+    pub const none: DynamicLinker = .{ ._inner = .{} };
 
     /// Asserts that the length is less than or equal to 255 bytes.
     pub fn init(dl_or_null: ?[]const u8) DynamicLinker {
-        var result: DynamicLinker = undefined;
+        var result: DynamicLinker = .{ ._inner = undefined };
         result.set(dl_or_null);
         return result;
     }
 
     /// The returned memory has the same lifetime as the `DynamicLinker`.
     pub fn get(self: *const DynamicLinker) ?[]const u8 {
-        const m: usize = self.max_byte orelse return null;
-        return self.buffer[0 .. m + 1];
+        return if (self._inner.len != 0)
+            self._inner.constSlice()
+        else
+            null;
     }
 
     /// Asserts that the length is less than or equal to 255 bytes.
     pub fn set(self: *DynamicLinker, dl_or_null: ?[]const u8) void {
         if (dl_or_null) |dl| {
-            @memcpy(self.buffer[0..dl.len], dl);
-            self.max_byte = @intCast(dl.len - 1);
+            self._inner = std.BoundedArray(u8, 255).fromSlice(dl) catch unreachable;
         } else {
-            self.max_byte = null;
+            self._inner = .{};
         }
     }
 
     pub fn eql(a: DynamicLinker, b: DynamicLinker) bool {
-        const a_m = a.max_byte orelse return b.max_byte == null;
-        const b_m = b.max_byte orelse return false;
-        if (a_m != b_m) return false;
-        const a_s = a.buffer[0 .. a_m + 1];
-        const b_s = b.buffer[0 .. a_m + 1];
-        return std.mem.eql(u8, a_s, b_s);
+        return std.mem.eql(u8, a._inner.constSlice(), b._inner.constSlice());
+    }
+
+    fn print(self: *DynamicLinker, comptime fmt: []const u8, args: anytype) DynamicLinker {
+        self._inner.writer().print(fmt, args) catch unreachable;
+        return self;
+    }
+
+    fn reset(self: *DynamicLinker, comptime dl: []const u8) DynamicLinker {
+        self.set(dl);
+        return self;
     }
 };
-
-pub fn standardDynamicLinkerPath(target: Target) DynamicLinker {
-    return standardDynamicLinkerPath_cpu_os_abi(target.cpu, target.os.tag, target.abi);
-}
-
-pub fn standardDynamicLinkerPath_cpu_os_abi(cpu: Cpu, os_tag: Os.Tag, abi: Abi) DynamicLinker {
-    var result = DynamicLinker.none;
-    const S = struct {
-        fn print(r: *DynamicLinker, comptime fmt: []const u8, args: anytype) DynamicLinker {
-            r.max_byte = @as(u8, @intCast((std.fmt.bufPrint(&r.buffer, fmt, args) catch unreachable).len - 1));
-            return r.*;
-        }
-        fn copy(r: *DynamicLinker, s: []const u8) DynamicLinker {
-            @memcpy(r.buffer[0..s.len], s);
-            r.max_byte = @as(u8, @intCast(s.len - 1));
-            return r.*;
-        }
-    };
-    const print = S.print;
-    const copy = S.copy;
-
-    if (abi == .android) {
-        const suffix = if (ptrBitWidth_cpu_abi(cpu, abi) == 64) "64" else "";
-        return print(&result, "/system/bin/linker{s}", .{suffix});
-    }
-
-    if (abi.isMusl()) {
-        const is_arm = switch (cpu.arch) {
-            .arm, .armeb, .thumb, .thumbeb => true,
-            else => false,
-        };
-        const arch_part = switch (cpu.arch) {
-            .arm, .thumb => "arm",
-            .armeb, .thumbeb => "armeb",
-            else => |arch| @tagName(arch),
-        };
-        const arch_suffix = if (is_arm and abi.floatAbi() == .hard) "hf" else "";
-        return print(&result, "/lib/ld-musl-{s}{s}.so.1", .{ arch_part, arch_suffix });
-    }
-
-    switch (os_tag) {
-        .freebsd => return copy(&result, "/libexec/ld-elf.so.1"),
-        .netbsd => return copy(&result, "/libexec/ld.elf_so"),
-        .openbsd => return copy(&result, "/usr/libexec/ld.so"),
-        .dragonfly => return copy(&result, "/libexec/ld-elf.so.2"),
-        .solaris, .illumos => return copy(&result, "/lib/64/ld.so.1"),
-        .linux => switch (cpu.arch) {
-            .x86,
-            .sparc,
-            .sparcel,
-            => return copy(&result, "/lib/ld-linux.so.2"),
-
-            .aarch64 => return copy(&result, "/lib/ld-linux-aarch64.so.1"),
-            .aarch64_be => return copy(&result, "/lib/ld-linux-aarch64_be.so.1"),
-            .aarch64_32 => return copy(&result, "/lib/ld-linux-aarch64_32.so.1"),
-
-            .arm,
-            .armeb,
-            .thumb,
-            .thumbeb,
-            => return copy(&result, switch (abi.floatAbi()) {
-                .hard => "/lib/ld-linux-armhf.so.3",
-                else => "/lib/ld-linux.so.3",
-            }),
-
-            .mips,
-            .mipsel,
-            .mips64,
-            .mips64el,
-            => {
-                const lib_suffix = switch (abi) {
-                    .gnuabin32, .gnux32 => "32",
-                    .gnuabi64 => "64",
-                    else => "",
-                };
-                const is_nan_2008 = mips.featureSetHas(cpu.features, .nan2008);
-                const loader = if (is_nan_2008) "ld-linux-mipsn8.so.1" else "ld.so.1";
-                return print(&result, "/lib{s}/{s}", .{ lib_suffix, loader });
-            },
-
-            .powerpc, .powerpcle => return copy(&result, "/lib/ld.so.1"),
-            .powerpc64, .powerpc64le => return copy(&result, "/lib64/ld64.so.2"),
-            .s390x => return copy(&result, "/lib64/ld64.so.1"),
-            .sparc64 => return copy(&result, "/lib64/ld-linux.so.2"),
-            .x86_64 => return copy(&result, switch (abi) {
-                .gnux32 => "/libx32/ld-linux-x32.so.2",
-                else => "/lib64/ld-linux-x86-64.so.2",
-            }),
-
-            .riscv32 => return copy(&result, "/lib/ld-linux-riscv32-ilp32.so.1"),
-            .riscv64 => return copy(&result, "/lib/ld-linux-riscv64-lp64.so.1"),
-
-            // Architectures in this list have been verified as not having a standard
-            // dynamic linker path.
-            .wasm32,
-            .wasm64,
-            .bpfel,
-            .bpfeb,
-            .nvptx,
-            .nvptx64,
-            .spu_2,
-            .avr,
-            .spirv32,
-            .spirv64,
-            => return result,
-
-            // TODO go over each item in this list and either move it to the above list, or
-            // implement the standard dynamic linker path code for it.
-            .arc,
-            .csky,
-            .hexagon,
-            .m68k,
-            .msp430,
-            .r600,
-            .amdgcn,
-            .tce,
-            .tcele,
-            .xcore,
-            .le32,
-            .le64,
-            .amdil,
-            .amdil64,
-            .hsail,
-            .hsail64,
-            .spir,
-            .spir64,
-            .kalimba,
-            .shave,
-            .lanai,
-            .renderscript32,
-            .renderscript64,
-            .ve,
-            .dxil,
-            .loongarch32,
-            .loongarch64,
-            .xtensa,
-            => return result,
-        },
-
-        .ios,
-        .tvos,
-        .watchos,
-        .macos,
-        => return copy(&result, "/usr/lib/dyld"),
-
-        // Operating systems in this list have been verified as not having a standard
-        // dynamic linker path.
-        .freestanding,
-        .uefi,
-        .windows,
-        .emscripten,
-        .wasi,
-        .opencl,
-        .glsl450,
-        .vulkan,
-        .other,
-        .plan9,
-        => return result,
-
-        // TODO revisit when multi-arch for Haiku is available
-        .haiku => return copy(&result, "/system/runtime_loader"),
-
-        // TODO go over each item in this list and either move it to the above list, or
-        // implement the standard dynamic linker path code for it.
-        .ananas,
-        .cloudabi,
-        .fuchsia,
-        .kfreebsd,
-        .lv2,
-        .zos,
-        .minix,
-        .rtems,
-        .nacl,
-        .aix,
-        .cuda,
-        .nvcl,
-        .amdhsa,
-        .ps4,
-        .ps5,
-        .elfiamcu,
-        .mesa3d,
-        .contiki,
-        .amdpal,
-        .hermit,
-        .hurd,
-        .driverkit,
-        .shadermodel,
-        .liteos,
-        => return result,
-    }
-}
 
 /// 0c spim    little-endian MIPS 3000 family
 /// 1c 68000   Motorola MC68000
@@ -2774,6 +2583,271 @@ pub fn osArchName(target: std.Target) [:0]const u8 {
         else => @tagName(target.cpu.arch),
     };
 }
+
+//
+
+pub fn standardDynamicLinkerPath(target: Target) error{ Unsupported, NotApplicable }!DynamicLinker {
+    // TODO что делать когда OFMT другой?
+    // std.debug.assert(target.hasDynamicLinker());
+
+    const S = struct {
+        ba: std.BoundedArray(u8, 255) = .{},
+
+        fn print(self: *@This(), comptime fmt: []const u8, args: anytype) []const u8 {
+            std.debug.assert(self.ba.len == 0);
+
+            self.ba.writer().print(fmt, args) catch unreachable;
+
+            return self.ba.constSlice();
+        }
+    };
+
+    var result: S = .{};
+
+    const cpu = target.cpu;
+    const os_tag = target.os.tag;
+    const abi = target.abi;
+
+    //var result = DynamicLinker.none;
+
+    if (abi == .android) {
+        const suffix = if (ptrBitWidth_cpu_abi(cpu, abi) == 64) "64" else "";
+        return DynamicLinker.init(
+            result.print(
+                "/system/bin/linker{s}",
+                .{suffix},
+            ),
+        );
+    }
+
+    if (abi.isMusl()) {
+        const arch_part = switch (cpu.arch) {
+            .arm, .thumb => switch (abi.floatAbi()) {
+                .hard => "armhf",
+                .soft => "arm",
+            },
+            .armeb, .thumbeb => switch (abi.floatAbi()) {
+                .hard => "armebhf",
+                .soft => "armeb",
+            },
+
+            .x86 => "i386",
+            .x86_64 => switch (abi) {
+                .gnux32, .muslx32 => "x32",
+                else => "x86_64",
+            },
+            //
+            Cpu.Arch.m68k => switch (abi.floatAbi()) {
+                .hard => @panic(""), // TODO
+                .soft => "m68k-sf",
+            },
+            //
+            .powerpc64,
+            .powerpc64le,
+            .s390x,
+            => |arch| @tagName(arch),
+            //
+            .powerpc => switch (abi.floatAbi()) {
+                .hard => "powerpc",
+                .soft => "powerpc-sf",
+            },
+            .powerpcle => return error.Unsupported,
+
+            //
+
+            // Architectures in this list have been verified as not having a standard
+            // dynamic linker path.
+            .wasm32,
+            .wasm64,
+            .bpfel,
+            .bpfeb,
+            .nvptx,
+            .nvptx64,
+            .spu_2,
+            .avr,
+            .spirv32,
+            .spirv64,
+            => return error.NotApplicable,
+
+            else => |arch| @tagName(arch),
+        };
+
+        std.log.debug(
+            "/lib/ld-musl-{s}.so.1",
+            .{
+                arch_part,
+            },
+        );
+
+        return DynamicLinker.init(
+            result.print(
+                "/lib/ld-musl-{s}.so.1",
+                .{
+                    arch_part,
+                },
+            ),
+        );
+    }
+
+    const path = switch (os_tag) {
+        .freebsd => "/libexec/ld-elf.so.1",
+        .netbsd => "/libexec/ld.elf_so",
+        .openbsd => "/usr/libexec/ld.so",
+        .dragonfly => "/libexec/ld-elf.so.2",
+        .solaris, .illumos => "/lib/64/ld.so.1",
+        .linux => switch (cpu.arch) {
+            .x86,
+            .sparc,
+            .sparcel,
+            => "/lib/ld-linux.so.2",
+
+            .aarch64 => "/lib/ld-linux-aarch64.so.1",
+            .aarch64_be => "/lib/ld-linux-aarch64_be.so.1",
+            .aarch64_32 => "/lib/ld-linux-aarch64_32.so.1",
+
+            .arm,
+            .armeb,
+            .thumb,
+            .thumbeb,
+            => switch (abi.floatAbi()) {
+                .hard => "/lib/ld-linux-armhf.so.3",
+                else => "/lib/ld-linux.so.3",
+            },
+
+            .mips,
+            .mipsel,
+            .mips64,
+            .mips64el,
+            => mips: {
+                const lib_suffix = switch (abi) {
+                    .gnuabin32, .gnux32 => "32",
+                    .gnuabi64 => "64",
+                    else => "",
+                };
+                const is_nan_2008 = mips.featureSetHas(cpu.features, .nan2008);
+                const loader = if (is_nan_2008) "ld-linux-mipsn8.so.1" else "ld.so.1";
+
+                break :mips result.print(
+                    "/lib{s}/{s}",
+                    .{ lib_suffix, loader },
+                );
+            },
+
+            .powerpc, .powerpcle => "/lib/ld.so.1",
+            .powerpc64, .powerpc64le => "/lib64/ld64.so.2",
+            .s390x => "/lib64/ld64.so.1",
+            .sparc64 => "/lib64/ld-linux.so.2",
+            .x86_64 => switch (abi) {
+                .gnux32 => "/libx32/ld-linux-x32.so.2",
+                else => "/lib64/ld-linux-x86-64.so.2",
+            },
+
+            .riscv32 => "/lib/ld-linux-riscv32-ilp32.so.1",
+            .riscv64 => "/lib/ld-linux-riscv64-lp64.so.1",
+
+            // TODO go over each item in this list and either move it to the above list, or
+            // implement the standard dynamic linker path code for it.
+            .arc,
+            .csky,
+            .hexagon,
+            .m68k,
+            .msp430,
+            .r600,
+            .amdgcn,
+            .tce,
+            .tcele,
+            .xcore,
+            .le32,
+            .le64,
+            .amdil,
+            .amdil64,
+            .hsail,
+            .hsail64,
+            .spir,
+            .spir64,
+            .kalimba,
+            .shave,
+            .lanai,
+            .renderscript32,
+            .renderscript64,
+            .ve,
+            .dxil,
+            .loongarch32,
+            .loongarch64,
+            .xtensa,
+            => return DynamicLinker.none,
+
+            // Architectures in this list have been verified as not having a standard
+            // dynamic linker path.
+            .wasm32,
+            .wasm64,
+            .bpfel,
+            .bpfeb,
+            .nvptx,
+            .nvptx64,
+            .spu_2,
+            .avr,
+            .spirv32,
+            .spirv64,
+            => return DynamicLinker.none,
+        },
+
+        .ios,
+        .tvos,
+        .watchos,
+        .macos,
+        => "/usr/lib/dyld",
+
+        // TODO revisit when multi-arch for Haiku is available
+        .haiku => "/system/runtime_loader",
+
+        // TODO go over each item in this list and either move it to the above list, or
+        // implement the standard dynamic linker path code for it.
+        .ananas,
+        .cloudabi,
+        .fuchsia,
+        .kfreebsd,
+        .lv2,
+        .zos,
+        .minix,
+        .rtems,
+        .nacl,
+        .aix,
+        .cuda,
+        .nvcl,
+        .amdhsa,
+        .ps4,
+        .ps5,
+        .elfiamcu,
+        .mesa3d,
+        .contiki,
+        .amdpal,
+        .hermit,
+        .hurd,
+        .driverkit,
+        .shadermodel,
+        .liteos,
+        => return DynamicLinker.none,
+
+        // Operating systems in this list have been verified as not having a standard
+        // dynamic linker path.
+        .freestanding,
+        .uefi,
+        .windows,
+        .emscripten,
+        .wasi,
+        .opencl,
+        .glsl450,
+        .vulkan,
+        .other,
+        .plan9,
+        => return DynamicLinker.none,
+    };
+
+    return DynamicLinker.init(path);
+}
+
+//
 
 const Target = @This();
 const std = @import("std.zig");

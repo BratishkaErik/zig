@@ -483,17 +483,18 @@ pub fn abiAndDynamicLinkerFromFile(
                 elf.PT_INTERP => if (look_for_ld) {
                     const p_offset = elfInt(is_64, need_bswap, ph32.p_offset, ph64.p_offset);
                     const p_filesz = elfInt(is_64, need_bswap, ph32.p_filesz, ph64.p_filesz);
-                    if (p_filesz > result.dynamic_linker.buffer.len) return error.NameTooLong;
-                    const filesz = @as(usize, @intCast(p_filesz));
-                    _ = try preadMin(file, result.dynamic_linker.buffer[0..filesz], p_offset, filesz);
+                    if (p_filesz > result.dynamic_linker._inner.buffer.len) return error.NameTooLong;
+
+                    // We know it will fit in u8 because we check against dynamic_linker._inner.len above.
+                    const filesz: u8 = @intCast(p_filesz);
+
+                    _ = try preadMin(file, result.dynamic_linker._inner.buffer[0..filesz], p_offset, filesz);
                     // PT_INTERP includes a null byte in filesz.
                     const len = filesz - 1;
-                    // dynamic_linker.max_byte is "max", not "len".
-                    // We know it will fit in u8 because we check against dynamic_linker.buffer.len above.
-                    result.dynamic_linker.max_byte = @as(u8, @intCast(len - 1));
+                    result.dynamic_linker._inner.len = len;
 
                     // Use it to determine ABI.
-                    const full_ld_path = result.dynamic_linker.buffer[0..len];
+                    const full_ld_path = result.dynamic_linker.get().?;
                     for (ld_info_list) |ld_info| {
                         const standard_ld_basename = fs.path.basename(ld_info.ld.get().?);
                         if (std.mem.endsWith(u8, full_ld_path, standard_ld_basename)) {
@@ -1071,18 +1072,21 @@ fn detectAbiAndDynamicLinker(
     };
 }
 
-fn defaultAbiAndDynamicLinker(cpu: Target.Cpu, os: Target.Os, query: Target.Query) !Target {
+fn defaultAbiAndDynamicLinker(cpu: Target.Cpu, os: Target.Os, query: Target.Query) Target {
     const abi = query.abi orelse Target.Abi.default(cpu.arch, os);
-    return .{
+    const ofmt = query.ofmt orelse Target.ObjectFormat.default(os.tag, cpu.arch);
+
+    var result: Target = .{
         .cpu = cpu,
         .os = os,
         .abi = abi,
-        .ofmt = query.ofmt orelse Target.ObjectFormat.default(os.tag, cpu.arch),
-        .dynamic_linker = if (query.dynamic_linker.get() == null)
-            Target.standardDynamicLinkerPath_cpu_os_abi(cpu, os.tag, abi)
-        else
-            query.dynamic_linker,
+        .ofmt = ofmt,
     };
+    result.dynamic_linker = if (query.dynamic_linker.get() == null)
+        result.standardDynamicLinkerPath()
+    else
+        query.dynamic_linker;
+    return result;
 }
 
 const LdInfo = struct {
