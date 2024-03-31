@@ -978,6 +978,7 @@ fn builtinCall(astrl: *AstRlAnnotate, block: ?*Block, ri: ResultInfo, node: Ast.
         .bit_offset_of,
         .offset_of,
         .has_decl,
+        .decl,
         .has_field,
         .field,
         => {

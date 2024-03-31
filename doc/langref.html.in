@@ -8542,6 +8542,28 @@ test "main" {
       {#see_also|@cVaArg|@cVaCopy|@cVaEnd#}
       {#header_close#}
 
+      {#header_open|@decl#}
+      <pre>{#syntax#}@decl(comptime Container: type, comptime decl_name: []const u8) (decl){#endsyntax#}</pre>
+      <p>Performs decl access inside containers by a compile-time string. Works on declarations only.
+      </p>
+      {#code_begin|test|test_decl_builtin#}
+const std = @import("std");
+const expect = std.testing.expect;
+
+const Point = struct {
+    pub var z: u32 = 1;
+};
+
+test "@decl" {
+    try expect(@decl(Point, "z") == 1);
+
+    @decl(Point, "z") = 2;
+    try expect(@decl(Point, "z") == 2);
+}
+      {#code_end#}
+      {#see_also|@field#}
+      {#header_close#}
+
       {#header_open|@divExact#}
       <pre>{#syntax#}@divExact(numerator: T, denominator: T) T{#endsyntax#}</pre>
       <p>
@@ -8754,6 +8776,7 @@ test "decl access by string" {
 }
       {#code_end#}
 
+      {#see_also|@decl#}
       {#header_close#}
 
       {#header_open|@fieldParentPtr#}

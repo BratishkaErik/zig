@@ -1119,6 +1119,8 @@ fn analyzeBodyInner(
             .ptr_cast                     => try sema.zirPtrCast(block, inst),
             .truncate                     => try sema.zirTruncate(block, inst),
             .has_decl                     => try sema.zirHasDecl(block, inst),
+            .decl_builtin_ptr             => try sema.zirDeclBuiltin(block, inst, .ptr),
+            .decl_builtin_val             => try sema.zirDeclBuiltin(block, inst, .val),
             .has_field                    => try sema.zirHasField(block, inst),
             .byte_swap                    => try sema.zirByteSwap(block, inst),
             .bit_reverse                  => try sema.zirBitReverse(block, inst),
@@ -13815,6 +13817,59 @@ fn zirHasDecl(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air
         }
     }
     return .bool_false;
+}
+
+fn zirDeclBuiltin(
+    sema: *Sema,
+    block: *Block,
+    inst: Zir.Inst.Index,
+    suffix: enum(comptime_int) { ptr, val },
+) CompileError!Air.Inst.Ref {
+    const zcu = sema.mod;
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
+    const extra = sema.code.extraData(Zir.Inst.Bin, inst_data.payload_index).data;
+    const src = inst_data.src();
+
+    const container_src: LazySrcLoc = .{ .node_offset_builtin_call_arg0 = inst_data.src_node };
+    const decl_name_src: LazySrcLoc = .{ .node_offset_builtin_call_arg1 = inst_data.src_node };
+
+    const container_type = switch (suffix) {
+        .ptr => container_type: {
+            const ref = try sema.resolveInst(extra.lhs);
+            const dereffed_val = try sema.analyzeLoad(block, container_src, ref, container_src);
+
+            break :container_type try sema.analyzeAsType(block, container_src, dereffed_val);
+        },
+        .val => container_type: {
+            const val = try sema.resolveInst(extra.lhs);
+
+            break :container_type try sema.analyzeAsType(block, container_src, val);
+        },
+    };
+
+    if (container_type.isGenericPoison()) return error.GenericPoison;
+
+    const decl_name = try sema.resolveConstStringIntern(block, decl_name_src, extra.rhs, .{
+        .needed_comptime_reason = "decl name must be comptime-known",
+    });
+
+    if (container_type.typeDeclInst(zcu)) |type_decl_inst| {
+        try sema.declareDependency(.{ .namespace_name = .{
+            .namespace = type_decl_inst,
+            .name = decl_name,
+        } });
+    }
+
+    try sema.checkNamespaceType(block, container_src, container_type);
+
+    const namespace = container_type.getNamespaceIndex(zcu);
+    const decl_index = (try sema.namespaceLookup(block, src, namespace, decl_name)) orelse
+        return sema.failWithBadMemberAccess(block, container_type, container_src, decl_name);
+
+    return switch (suffix) {
+        .ptr => try sema.analyzeDeclRef(decl_index),
+        .val => try sema.analyzeDeclVal(block, src, decl_index),
+    };
 }
 
 fn zirImport(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {

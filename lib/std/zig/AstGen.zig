@@ -2767,6 +2767,8 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .ptr_cast,
             .truncate,
             .has_decl,
+            .decl_builtin_ptr,
+            .decl_builtin_val,
             .has_field,
             .clz,
             .ctz,
@@ -9139,18 +9141,36 @@ fn builtinCall(
             const result = try gz.addExtendedMultiOpPayloadIndex(.compile_log, payload_index, params.len);
             return rvalue(gz, ri, result, node);
         },
-        .field => {
-            if (ri.rl == .ref or ri.rl == .ref_coerced_ty) {
-                return gz.addPlNode(.field_ptr_named, node, Zir.Inst.FieldNamed{
-                    .lhs = try expr(gz, scope, .{ .rl = .ref }, params[0]),
-                    .field_name = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = .slice_const_u8_type } }, params[1]),
+        .decl, .field => |builtin_tag| return switch (ri.rl) {
+            .ref, .ref_coerced_ty => ref: {
+                const container_or_container_type = try expr(gz, scope, .{ .rl = .ref }, params[0]);
+                const decl_name = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = .slice_const_u8_type } }, params[1]);
+
+                const tag: Zir.Inst.Tag = switch (builtin_tag) {
+                    .decl => .decl_builtin_ptr,
+                    .field => .field_ptr_named,
+                    else => unreachable,
+                };
+                break :ref try gz.addPlNode(tag, node, Zir.Inst.Bin{
+                    .lhs = container_or_container_type,
+                    .rhs = decl_name,
                 });
-            }
-            const result = try gz.addPlNode(.field_val_named, node, Zir.Inst.FieldNamed{
-                .lhs = try expr(gz, scope, .{ .rl = .none }, params[0]),
-                .field_name = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = .slice_const_u8_type } }, params[1]),
-            });
-            return rvalue(gz, ri, result, node);
+            },
+            else => val: {
+                const container_or_container_type = try expr(gz, scope, .{ .rl = .none }, params[0]);
+                const decl_name = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = .slice_const_u8_type } }, params[1]);
+
+                const tag: Zir.Inst.Tag = switch (builtin_tag) {
+                    .decl => .decl_builtin_val,
+                    .field => .field_val_named,
+                    else => unreachable,
+                };
+                const result = try gz.addPlNode(tag, node, Zir.Inst.Bin{
+                    .lhs = container_or_container_type,
+                    .rhs = decl_name,
+                });
+                break :val try rvalue(gz, ri, result, node);
+            },
         },
 
         // zig fmt: off

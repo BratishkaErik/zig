@@ -378,6 +378,8 @@ const Writer = struct {
             .cmp_neq,
             .div,
             .has_decl,
+            .decl_builtin_ptr,
+            .decl_builtin_val,
             .has_field,
             .mod_rem,
             .shl,
