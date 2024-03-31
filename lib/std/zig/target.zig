@@ -114,4 +114,190 @@ pub fn muslArchName(arch: std.Target.Cpu.Arch) [:0]const u8 {
     }
 }
 
+pub fn zigTargetToLlvmTriple(allocator: std.mem.Allocator, target: std.Target) error{OutOfMemory}![]const u8 {
+    var llvm_triple = std.ArrayList(u8).init(allocator);
+    errdefer llvm_triple.deinit();
+
+    const llvm_arch = switch (target.cpu.arch) {
+        .spu_2 => return error.@"LLVM backend does not support SPU Mark II",
+        .x86 => "i386",
+
+        .aarch64,
+        .aarch64_32,
+        .aarch64_be,
+        .amdgcn,
+        .amdil,
+        .amdil64,
+        .arc,
+        .arm,
+        .armeb,
+        .avr,
+        .bpfeb,
+        .bpfel,
+        .csky,
+        .dxil,
+        .hexagon,
+        .hsail,
+        .hsail64,
+        .kalimba,
+        .lanai,
+        .le32,
+        .le64,
+        .loongarch32,
+        .loongarch64,
+        .m68k,
+        .mips,
+        .mips64,
+        .mips64el,
+        .mipsel,
+        .msp430,
+        .nvptx,
+        .nvptx64,
+        .powerpc,
+        .powerpc64,
+        .powerpc64le,
+        .powerpcle,
+        .r600,
+        .renderscript32,
+        .renderscript64,
+        .riscv32,
+        .riscv64,
+        .s390x,
+        .shave,
+        .sparc,
+        .sparc64,
+        .sparcel,
+        .spir,
+        .spir64,
+        .spirv32,
+        .spirv64,
+        .tce,
+        .tcele,
+        .thumb,
+        .thumbeb,
+        .ve,
+        .wasm32,
+        .wasm64,
+        .x86_64,
+        .xcore,
+        .xtensa,
+        => |tag| @tagName(tag),
+    };
+    try llvm_triple.appendSlice(llvm_arch);
+    try llvm_triple.appendSlice("-unknown-");
+
+    const llvm_os = switch (target.os.tag) {
+        .illumos => "solaris",
+        .macos => "macosx",
+        .uefi => "windows",
+
+        .freestanding,
+        .other,
+        //
+        .glsl450,
+        .opencl,
+        .plan9,
+        .vulkan,
+        => "unknown",
+
+        .aix,
+        .amdhsa,
+        .amdpal,
+        .ananas,
+        .cloudabi,
+        .contiki,
+        .cuda,
+        .dragonfly,
+        .driverkit,
+        .elfiamcu,
+        .emscripten,
+        .freebsd,
+        .fuchsia,
+        .haiku,
+        .hermit,
+        .hurd,
+        .ios,
+        .kfreebsd,
+        .linux,
+        .liteos,
+        .lv2,
+        .mesa3d,
+        .minix,
+        .nacl,
+        .netbsd,
+        .nvcl,
+        .openbsd,
+        .ps4,
+        .ps5,
+        .rtems,
+        .shadermodel,
+        .tvos,
+        .wasi,
+        .watchos,
+        .windows,
+        .zos,
+        => |tag| @tagName(tag),
+    };
+    try llvm_triple.appendSlice(llvm_os);
+
+    if (target.os.tag.isDarwin()) {
+        const min_version = target.os.version_range.semver.min;
+        try llvm_triple.writer().print("{d}.{d}.{d}", .{
+            min_version.major,
+            min_version.minor,
+            min_version.patch,
+        });
+    }
+    try llvm_triple.append('-');
+
+    const llvm_abi = switch (target.abi) {
+        .none => "unknown",
+
+        .android,
+        .code16,
+        .coreclr,
+        .cygnus,
+        .eabi,
+        .eabihf,
+        .gnu,
+        .gnuabi64,
+        .gnuabin32,
+        .gnueabi,
+        .gnueabihf,
+        .gnuf32,
+        .gnuf64,
+        .gnuilp32,
+        .gnusf,
+        .gnux32,
+        .itanium,
+        .macabi,
+        .msvc,
+        .musl,
+        .musleabi,
+        .musleabihf,
+        .muslx32,
+        .simulator,
+        //
+        .amplification,
+        .anyhit,
+        .callable,
+        .closesthit,
+        .compute,
+        .domain,
+        .geometry,
+        .hull,
+        .intersection,
+        .library,
+        .mesh,
+        .miss,
+        .pixel,
+        .raygeneration,
+        .vertex,
+        => |tag| @tagName(tag),
+    };
+    try llvm_triple.appendSlice(llvm_abi);
+
+    return try llvm_triple.toOwnedSlice();
+}
+
 const std = @import("std");
