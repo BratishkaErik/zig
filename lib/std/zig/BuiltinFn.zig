@@ -35,6 +35,7 @@ pub const Tag = enum {
     c_va_copy,
     c_va_end,
     c_va_start,
+    decl,
     div_exact,
     div_floor,
     div_trunc,
@@ -387,6 +388,15 @@ pub const list = list: {
                 .tag = .c_va_start,
                 .param_count = 0,
                 .illegal_outside_function = true,
+            },
+        },
+        .{
+            "@decl",
+            .{
+                .tag = .decl,
+                .eval_to_error = .maybe,
+                .param_count = 2,
+                .allows_lvalue = true,
             },
         },
         .{

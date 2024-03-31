@@ -892,6 +892,12 @@ pub const Inst = struct {
         /// Implements the `@hasDecl` builtin.
         /// Uses the `pl_node` union field. Payload is `Bin`.
         has_decl,
+        /// Implements the `@decl` builtin.
+        /// Uses the `pl_node` union field. Payload is `Bin`.
+        decl_builtin_ptr,
+        /// Implements the `@decl` builtin.
+        /// Uses the `pl_node` union field. Payload is `Bin`.
+        decl_builtin_val,
         /// Implements the `@hasField` builtin.
         /// Uses the `pl_node` union field. Payload is `Bin`.
         has_field,
@@ -1105,6 +1111,8 @@ pub const Inst = struct {
                 .func_inferred,
                 .func_fancy,
                 .has_decl,
+                .decl_builtin_ptr,
+                .decl_builtin_val,
                 .int,
                 .int_big,
                 .float,
@@ -1404,6 +1412,8 @@ pub const Inst = struct {
                 .func_inferred,
                 .func_fancy,
                 .has_decl,
+                .decl_builtin_ptr,
+                .decl_builtin_val,
                 .int,
                 .int_big,
                 .float,
@@ -1755,6 +1765,8 @@ pub const Inst = struct {
                 .typeof_builtin = .pl_node,
 
                 .has_decl = .pl_node,
+                .decl_builtin_ptr = .pl_node,
+                .decl_builtin_val = .pl_node,
                 .has_field = .pl_node,
 
                 .clz = .un_node,
