@@ -2670,8 +2670,6 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .elem_val_imm,
             .field_ptr,
             .field_val,
-            .field_ptr_named,
-            .field_val_named,
             .func,
             .func_inferred,
             .func_fancy,
@@ -2770,6 +2768,8 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .decl_builtin_ptr,
             .decl_builtin_val,
             .has_field,
+            .field_builtin_val,
+            .field_builtin_ptr,
             .clz,
             .ctz,
             .pop_count,
@@ -9148,8 +9148,12 @@ fn builtinCall(
 
                 const tag: Zir.Inst.Tag = switch (builtin_tag) {
                     .decl => .decl_builtin_ptr,
+<<<<<<< HEAD
                     .field => .field_ptr_named,
                     else => unreachable,
+=======
+                    .field => .field_builtin_ptr,
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
                 };
                 break :ref try gz.addPlNode(tag, node, Zir.Inst.Bin{
                     .lhs = container_or_container_type,
@@ -9162,8 +9166,12 @@ fn builtinCall(
 
                 const tag: Zir.Inst.Tag = switch (builtin_tag) {
                     .decl => .decl_builtin_val,
+<<<<<<< HEAD
                     .field => .field_val_named,
                     else => unreachable,
+=======
+                    .field => .field_builtin_val,
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
                 };
                 const result = try gz.addPlNode(tag, node, Zir.Inst.Bin{
                     .lhs = container_or_container_type,

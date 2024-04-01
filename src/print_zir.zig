@@ -381,6 +381,8 @@ const Writer = struct {
             .decl_builtin_ptr,
             .decl_builtin_val,
             .has_field,
+            .field_builtin_val,
+            .field_builtin_ptr,
             .mod_rem,
             .shl,
             .shl_exact,
@@ -467,10 +469,6 @@ const Writer = struct {
             .field_val,
             .field_ptr,
             => try self.writePlNodeField(stream, inst),
-
-            .field_ptr_named,
-            .field_val_named,
-            => try self.writePlNodeFieldNamed(stream, inst),
 
             .as_node, .as_shift_operand => try self.writeAs(stream, inst),
 

@@ -1041,9 +1041,7 @@ fn analyzeBodyInner(
             .error_union_type             => try sema.zirErrorUnionType(block, inst),
             .error_value                  => try sema.zirErrorValue(block, inst),
             .field_ptr                    => try sema.zirFieldPtr(block, inst),
-            .field_ptr_named              => try sema.zirFieldPtrNamed(block, inst),
             .field_val                    => try sema.zirFieldVal(block, inst),
-            .field_val_named              => try sema.zirFieldValNamed(block, inst),
             .func                         => try sema.zirFunc(block, inst, false),
             .func_inferred                => try sema.zirFunc(block, inst, true),
             .func_fancy                   => try sema.zirFuncFancy(block, inst),
@@ -1122,6 +1120,8 @@ fn analyzeBodyInner(
             .decl_builtin_ptr             => try sema.zirDeclBuiltin(block, inst, .ptr),
             .decl_builtin_val             => try sema.zirDeclBuiltin(block, inst, .val),
             .has_field                    => try sema.zirHasField(block, inst),
+            .field_builtin_val            => try sema.zirFieldBuiltin(block, inst, .val),
+            .field_builtin_ptr            => try sema.zirFieldBuiltin(block, inst, .ptr),
             .byte_swap                    => try sema.zirByteSwap(block, inst),
             .bit_reverse                  => try sema.zirBitReverse(block, inst),
             .bit_offset_of                => try sema.zirBitOffsetOf(block, inst),
@@ -10262,34 +10262,30 @@ fn zirStructInitFieldPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Compi
     }
 }
 
-fn zirFieldValNamed(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+fn zirFieldBuiltin(
+    sema: *Sema,
+    block: *Block,
+    inst: Zir.Inst.Index,
+    inner_type: enum(comptime_int) { val, ptr },
+) CompileError!Air.Inst.Ref {
     const tracy = trace(@src());
     defer tracy.end();
 
     const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
     const src = inst_data.src();
     const field_name_src: LazySrcLoc = .{ .node_offset_builtin_call_arg1 = inst_data.src_node };
-    const extra = sema.code.extraData(Zir.Inst.FieldNamed, inst_data.payload_index).data;
-    const object = try sema.resolveInst(extra.lhs);
-    const field_name = try sema.resolveConstStringIntern(block, field_name_src, extra.field_name, .{
+
+    const extra = sema.code.extraData(Zir.Inst.Bin, inst_data.payload_index).data;
+
+    const object_or_object_ptr = try sema.resolveInst(extra.lhs);
+    const field_name = try sema.resolveConstStringIntern(block, field_name_src, extra.rhs, .{
         .needed_comptime_reason = "field name must be comptime-known",
     });
-    return sema.fieldVal(block, src, object, field_name, field_name_src);
-}
 
-fn zirFieldPtrNamed(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
-    const tracy = trace(@src());
-    defer tracy.end();
-
-    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
-    const src = inst_data.src();
-    const field_name_src: LazySrcLoc = .{ .node_offset_builtin_call_arg1 = inst_data.src_node };
-    const extra = sema.code.extraData(Zir.Inst.FieldNamed, inst_data.payload_index).data;
-    const object_ptr = try sema.resolveInst(extra.lhs);
-    const field_name = try sema.resolveConstStringIntern(block, field_name_src, extra.field_name, .{
-        .needed_comptime_reason = "field name must be comptime-known",
-    });
-    return sema.fieldPtr(block, src, object_ptr, field_name, field_name_src, false);
+    return switch (inner_type) {
+        .ptr => try sema.fieldPtr(block, src, object_or_object_ptr, field_name, field_name_src, false),
+        .val => try sema.fieldVal(block, src, object_or_object_ptr, field_name, field_name_src),
+    };
 }
 
 fn zirIntCast(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
@@ -27160,30 +27156,30 @@ fn fieldVal(
     // When editing this function, note that there is corresponding logic to be edited
     // in `fieldPtr`. This function takes a value and returns a value.
 
-    const mod = sema.mod;
-    const ip = &mod.intern_pool;
+    const zcu = sema.mod;
+    const ip = &zcu.intern_pool;
     const object_src = src; // TODO better source location
     const object_ty = sema.typeOf(object);
 
     // Zig allows dereferencing a single pointer during field lookup. Note that
     // we don't actually need to generate the dereference some field lookups, like the
     // length of arrays and other comptime operations.
-    const is_pointer_to = object_ty.isSinglePointer(mod);
+    const is_pointer_to = object_ty.isSinglePointer(zcu);
 
     const inner_ty = if (is_pointer_to)
-        object_ty.childType(mod)
+        object_ty.childType(zcu)
     else
         object_ty;
 
-    switch (inner_ty.zigTypeTag(mod)) {
+    switch (inner_ty.zigTypeTag(zcu)) {
         .Array => {
             if (ip.stringEqlSlice(field_name, "len")) {
-                return Air.internedToRef((try mod.intValue(Type.usize, inner_ty.arrayLen(mod))).toIntern());
+                return Air.internedToRef((try zcu.intValue(Type.usize, inner_ty.arrayLen(zcu))).toIntern());
             } else if (ip.stringEqlSlice(field_name, "ptr") and is_pointer_to) {
-                const ptr_info = object_ty.ptrInfo(mod);
+                const ptr_info = object_ty.ptrInfo(zcu);
                 const result_ty = try sema.ptrType(.{
-                    .child = Type.fromInterned(ptr_info.child).childType(mod).toIntern(),
-                    .sentinel = if (inner_ty.sentinel(mod)) |s| s.toIntern() else .none,
+                    .child = Type.fromInterned(ptr_info.child).childType(zcu).toIntern(),
+                    .sentinel = if (inner_ty.sentinel(zcu)) |s| s.toIntern() else .none,
                     .flags = .{
                         .size = .Many,
                         .alignment = ptr_info.flags.alignment,
@@ -27200,13 +27196,13 @@ fn fieldVal(
                 return sema.fail(
                     block,
                     field_name_src,
-                    "no member named '{}' in '{}'",
-                    .{ field_name.fmt(ip), object_ty.fmt(mod) },
+                    "no field named '{}' in '{}'",
+                    .{ field_name.fmt(ip), object_ty.fmt(zcu) },
                 );
             }
         },
         .Pointer => {
-            const ptr_info = inner_ty.ptrInfo(mod);
+            const ptr_info = inner_ty.ptrInfo(zcu);
             if (ptr_info.flags.size == .Slice) {
                 if (ip.stringEqlSlice(field_name, "ptr")) {
                     const slice = if (is_pointer_to)
@@ -27224,8 +27220,8 @@ fn fieldVal(
                     return sema.fail(
                         block,
                         field_name_src,
-                        "no member named '{}' in '{}'",
-                        .{ field_name.fmt(ip), object_ty.fmt(mod) },
+                        "no field named '{}' in '{}'",
+                        .{ field_name.fmt(ip), object_ty.fmt(zcu) },
                     );
                 }
             }
@@ -27239,20 +27235,20 @@ fn fieldVal(
             const val = (try sema.resolveDefinedValue(block, object_src, dereffed_type)).?;
             const child_type = val.toType();
 
-            if (child_type.typeDeclInst(mod)) |type_decl_inst| {
+            if (child_type.typeDeclInst(zcu)) |type_decl_inst| {
                 try sema.declareDependency(.{ .namespace_name = .{
                     .namespace = type_decl_inst,
                     .name = field_name,
                 } });
             }
 
-            switch (try child_type.zigTypeTagOrPoison(mod)) {
+            switch (try child_type.zigTypeTagOrPoison(zcu)) {
                 .ErrorSet => {
                     switch (ip.indexToKey(child_type.toIntern())) {
                         .error_set_type => |error_set_type| blk: {
                             if (error_set_type.nameIndex(ip, field_name) != null) break :blk;
                             return sema.fail(block, src, "no error named '{}' in '{}'", .{
-                                field_name.fmt(ip), child_type.fmt(mod),
+                                field_name.fmt(ip), child_type.fmt(zcu),
                             });
                         },
                         .inferred_error_set_type => {
@@ -27260,55 +27256,88 @@ fn fieldVal(
                         },
                         .simple_type => |t| {
                             assert(t == .anyerror);
-                            _ = try mod.getErrorValue(field_name);
+                            _ = try zcu.getErrorValue(field_name);
                         },
                         else => unreachable,
                     }
 
-                    const error_set_type = if (!child_type.isAnyError(mod))
+                    const error_set_type = if (!child_type.isAnyError(zcu))
                         child_type
                     else
-                        try mod.singleErrorSetType(field_name);
-                    return Air.internedToRef((try mod.intern(.{ .err = .{
+                        try zcu.singleErrorSetType(field_name);
+                    return Air.internedToRef((try zcu.intern(.{ .err = .{
                         .ty = error_set_type.toIntern(),
                         .name = field_name,
                     } })));
                 },
                 .Union => {
-                    if (try sema.namespaceLookupVal(block, src, child_type.getNamespaceIndex(mod), field_name)) |inst| {
-                        return inst;
-                    }
                     try sema.resolveTypeFields(child_type);
-                    if (child_type.unionTagType(mod)) |enum_ty| {
-                        if (enum_ty.enumFieldIndex(field_name, mod)) |field_index_usize| {
+                    if (child_type.unionTagType(zcu)) |enum_ty| {
+                        if (enum_ty.enumFieldIndex(field_name, zcu)) |field_index_usize| {
                             const field_index: u32 = @intCast(field_index_usize);
-                            return Air.internedToRef((try mod.enumValueFieldIndex(enum_ty, field_index)).toIntern());
+                            return Air.internedToRef((try zcu.enumValueFieldIndex(enum_ty, field_index)).toIntern());
                         }
                     }
+<<<<<<< HEAD
                     return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+<<<<<<< HEAD
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .@"field or declaration");
+=======
+<<<<<<< HEAD
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+>>>>>>> a209e26cb1 (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> 06b2708ea0 (change `@field` behaviour (works only with fields and tags now))
                 },
                 .Enum => {
                     if (try sema.namespaceLookupVal(block, src, child_type.getNamespaceIndex(mod), field_name)) |inst| {
                         return inst;
                     }
                     const field_index_usize = child_type.enumFieldIndex(field_name, mod) orelse
+<<<<<<< HEAD
                         return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+<<<<<<< HEAD
+                        return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .@"field or declaration");
+=======
+                        return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .field);
+                },
+                .Enum => {
+                    const field_index_usize = child_type.enumFieldIndex(field_name, zcu) orelse
+                        return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .field);
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> a209e26cb1 (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> 06b2708ea0 (change `@field` behaviour (works only with fields and tags now))
                     const field_index: u32 = @intCast(field_index_usize);
-                    const enum_val = try mod.enumValueFieldIndex(child_type, field_index);
+                    const enum_val = try zcu.enumValueFieldIndex(child_type, field_index);
                     return Air.internedToRef(enum_val.toIntern());
                 },
                 .Struct, .Opaque => {
+<<<<<<< HEAD
                     if (try sema.namespaceLookupVal(block, src, child_type.getNamespaceIndex(mod), field_name)) |inst| {
                         return inst;
                     }
+<<<<<<< HEAD
                     return sema.failWithBadMemberAccess(block, child_type, src, field_name);
+=======
+<<<<<<< HEAD
+                    return sema.failWithBadMemberAccess(block, child_type, src, field_name, .declaration);
+=======
+                    return sema.failWithBadMemberAccess(block, child_type, src, field_name);
+=======
+                    return sema.failWithBadMemberAccess(block, child_type, src, field_name, .field);
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> a209e26cb1 (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> 06b2708ea0 (change `@field` behaviour (works only with fields and tags now))
                 },
                 else => {
                     const msg = msg: {
-                        const msg = try sema.errMsg(block, src, "type '{}' has no members", .{child_type.fmt(mod)});
+                        const msg = try sema.errMsg(block, src, "type '{}' has no members", .{child_type.fmt(zcu)});
                         errdefer msg.destroy(sema.gpa);
-                        if (child_type.isSlice(mod)) try sema.errNote(block, src, msg, "slice values have 'len' and 'ptr' members", .{});
-                        if (child_type.zigTypeTag(mod) == .Array) try sema.errNote(block, src, msg, "array values have 'len' member", .{});
+                        if (child_type.isSlice(zcu)) try sema.errNote(block, src, msg, "slice values have 'len' and 'ptr' members", .{});
+                        if (child_type.zigTypeTag(zcu) == .Array) try sema.errNote(block, src, msg, "array values have 'len' member", .{});
                         break :msg msg;
                     };
                     return sema.failWithOwnedErrorMsg(block, msg);
@@ -27405,7 +27434,7 @@ fn fieldPtr(
                 return sema.fail(
                     block,
                     field_name_src,
-                    "no member named '{}' in '{}'",
+                    "no field named '{}' in '{}'",
                     .{ field_name.fmt(ip), object_ty.fmt(mod) },
                 );
             }
@@ -27472,7 +27501,7 @@ fn fieldPtr(
                 return sema.fail(
                     block,
                     field_name_src,
-                    "no member named '{}' in '{}'",
+                    "no field named '{}' in '{}'",
                     .{ field_name.fmt(ip), object_ty.fmt(mod) },
                 );
             }
@@ -27526,9 +27555,6 @@ fn fieldPtr(
                     } }));
                 },
                 .Union => {
-                    if (try sema.namespaceLookupRef(block, src, child_type.getNamespaceIndex(mod), field_name)) |inst| {
-                        return inst;
-                    }
                     try sema.resolveTypeFields(child_type);
                     if (child_type.unionTagType(mod)) |enum_ty| {
                         if (enum_ty.enumFieldIndex(field_name, mod)) |field_index| {
@@ -27537,24 +27563,57 @@ fn fieldPtr(
                             return anonDeclRef(sema, idx_val.toIntern());
                         }
                     }
+<<<<<<< HEAD
                     return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+<<<<<<< HEAD
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .@"field or declaration");
+=======
+<<<<<<< HEAD
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .field);
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> a209e26cb1 (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> 06b2708ea0 (change `@field` behaviour (works only with fields and tags now))
                 },
                 .Enum => {
-                    if (try sema.namespaceLookupRef(block, src, child_type.getNamespaceIndex(mod), field_name)) |inst| {
-                        return inst;
-                    }
                     const field_index = child_type.enumFieldIndex(field_name, mod) orelse {
+<<<<<<< HEAD
                         return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+<<<<<<< HEAD
+                        return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .@"field or declaration");
+=======
+<<<<<<< HEAD
+                        return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+                        return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .field);
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> a209e26cb1 (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> 06b2708ea0 (change `@field` behaviour (works only with fields and tags now))
                     };
                     const field_index_u32: u32 = @intCast(field_index);
                     const idx_val = try mod.enumValueFieldIndex(child_type, field_index_u32);
                     return anonDeclRef(sema, idx_val.toIntern());
                 },
                 .Struct, .Opaque => {
+<<<<<<< HEAD
                     if (try sema.namespaceLookupRef(block, src, child_type.getNamespaceIndex(mod), field_name)) |inst| {
                         return inst;
                     }
+<<<<<<< HEAD
                     return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+<<<<<<< HEAD
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .declaration);
+=======
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name);
+=======
+                    return sema.failWithBadMemberAccess(block, child_type, field_name_src, field_name, .field);
+>>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> a209e26cb1 (change `@field` behaviour (works only with fields and tags now))
+>>>>>>> 06b2708ea0 (change `@field` behaviour (works only with fields and tags now))
                 },
                 else => return sema.fail(block, src, "type '{}' has no members", .{child_type.fmt(mod)}),
             }
@@ -27582,6 +27641,439 @@ fn fieldPtr(
     return sema.failWithInvalidFieldAccess(block, src, object_ty, field_name);
 }
 
+fn memberVal(
+    sema: *Sema,
+    block: *Block,
+    src: LazySrcLoc,
+    object: Air.Inst.Ref,
+    member_name: InternPool.NullTerminatedString,
+    member_name_src: LazySrcLoc,
+) CompileError!Air.Inst.Ref {
+    // When editing this function, note that there is corresponding logic to be edited
+    // in `memberPtr`. This function takes a value and returns a value.
+
+    const mod = sema.mod;
+    const ip = &mod.intern_pool;
+    const object_src = src; // TODO better source location
+    const object_ty = sema.typeOf(object);
+
+    // Zig allows dereferencing a single pointer during field lookup. Note that
+    // we don't actually need to generate the dereference some field lookups, like the
+    // length of arrays and other comptime operations.
+    const is_pointer_to = object_ty.isSinglePointer(mod);
+
+    const inner_ty = if (is_pointer_to)
+        object_ty.childType(mod)
+    else
+        object_ty;
+
+    switch (inner_ty.zigTypeTag(mod)) {
+        .Array => {
+            if (ip.stringEqlSlice(member_name, "len")) {
+                return Air.internedToRef((try mod.intValue(Type.usize, inner_ty.arrayLen(mod))).toIntern());
+            } else if (ip.stringEqlSlice(member_name, "ptr") and is_pointer_to) {
+                const ptr_info = object_ty.ptrInfo(mod);
+                const result_ty = try sema.ptrType(.{
+                    .child = Type.fromInterned(ptr_info.child).childType(mod).toIntern(),
+                    .sentinel = if (inner_ty.sentinel(mod)) |s| s.toIntern() else .none,
+                    .flags = .{
+                        .size = .Many,
+                        .alignment = ptr_info.flags.alignment,
+                        .is_const = ptr_info.flags.is_const,
+                        .is_volatile = ptr_info.flags.is_volatile,
+                        .is_allowzero = ptr_info.flags.is_allowzero,
+                        .address_space = ptr_info.flags.address_space,
+                        .vector_index = ptr_info.flags.vector_index,
+                    },
+                    .packed_offset = ptr_info.packed_offset,
+                });
+                return sema.coerce(block, result_ty, object, src);
+            } else {
+                return sema.fail(
+                    block,
+                    member_name_src,
+                    "no member named '{}' in '{}'",
+                    .{ member_name.fmt(ip), object_ty.fmt(mod) },
+                );
+            }
+        },
+        .Pointer => {
+            const ptr_info = inner_ty.ptrInfo(mod);
+            if (ptr_info.flags.size == .Slice) {
+                if (ip.stringEqlSlice(member_name, "ptr")) {
+                    const slice = if (is_pointer_to)
+                        try sema.analyzeLoad(block, src, object, object_src)
+                    else
+                        object;
+                    return sema.analyzeSlicePtr(block, object_src, slice, inner_ty);
+                } else if (ip.stringEqlSlice(member_name, "len")) {
+                    const slice = if (is_pointer_to)
+                        try sema.analyzeLoad(block, src, object, object_src)
+                    else
+                        object;
+                    return sema.analyzeSliceLen(block, src, slice);
+                } else {
+                    return sema.fail(
+                        block,
+                        member_name_src,
+                        "no member named '{}' in '{}'",
+                        .{ member_name.fmt(ip), object_ty.fmt(mod) },
+                    );
+                }
+            }
+        },
+        .Type => {
+            const dereffed_type = if (is_pointer_to)
+                try sema.analyzeLoad(block, src, object, object_src)
+            else
+                object;
+
+            const val = (try sema.resolveDefinedValue(block, object_src, dereffed_type)).?;
+            const child_type = val.toType();
+
+            if (child_type.typeDeclInst(mod)) |type_decl_inst| {
+                try sema.declareDependency(.{ .namespace_name = .{
+                    .namespace = type_decl_inst,
+                    .name = member_name,
+                } });
+            }
+
+            switch (try child_type.zigTypeTagOrPoison(mod)) {
+                .ErrorSet => {
+                    switch (ip.indexToKey(child_type.toIntern())) {
+                        .error_set_type => |error_set_type| blk: {
+                            if (error_set_type.nameIndex(ip, member_name) != null) break :blk;
+                            return sema.fail(block, src, "no error named '{}' in '{}'", .{
+                                member_name.fmt(ip), child_type.fmt(mod),
+                            });
+                        },
+                        .inferred_error_set_type => {
+                            return sema.fail(block, src, "TODO handle inferred error sets here", .{});
+                        },
+                        .simple_type => |t| {
+                            assert(t == .anyerror);
+                            _ = try mod.getErrorValue(member_name);
+                        },
+                        else => unreachable,
+                    }
+
+                    const error_set_type = if (!child_type.isAnyError(mod))
+                        child_type
+                    else
+                        try mod.singleErrorSetType(member_name);
+                    return Air.internedToRef((try mod.intern(.{ .err = .{
+                        .ty = error_set_type.toIntern(),
+                        .name = member_name,
+                    } })));
+                },
+                .Union => {
+                    if (try sema.namespaceLookupVal(block, src, child_type.getNamespaceIndex(mod), member_name)) |inst| {
+                        return inst;
+                    }
+                    try sema.resolveTypeFields(child_type);
+                    if (child_type.unionTagType(mod)) |enum_ty| {
+                        if (enum_ty.enumFieldIndex(member_name, mod)) |field_index_usize| {
+                            const field_index: u32 = @intCast(field_index_usize);
+                            return Air.internedToRef((try mod.enumValueFieldIndex(enum_ty, field_index)).toIntern());
+                        }
+                    }
+                    return sema.failWithBadMemberAccess(block, child_type, member_name_src, member_name, .@"field or declaration");
+                },
+                .Enum => {
+                    if (try sema.namespaceLookupVal(block, src, child_type.getNamespaceIndex(mod), member_name)) |inst| {
+                        return inst;
+                    }
+                    const field_index_usize = child_type.enumFieldIndex(member_name, mod) orelse
+                        return sema.failWithBadMemberAccess(block, child_type, member_name_src, member_name, .@"field or declaration");
+                    const field_index: u32 = @intCast(field_index_usize);
+                    const enum_val = try mod.enumValueFieldIndex(child_type, field_index);
+                    return Air.internedToRef(enum_val.toIntern());
+                },
+                .Struct, .Opaque => {
+                    if (try sema.namespaceLookupVal(block, src, child_type.getNamespaceIndex(mod), member_name)) |inst| {
+                        return inst;
+                    }
+                    return sema.failWithBadMemberAccess(block, child_type, src, member_name, .declaration);
+                },
+                else => {
+                    const msg = msg: {
+                        const msg = try sema.errMsg(block, src, "type '{}' has no members", .{child_type.fmt(mod)});
+                        errdefer msg.destroy(sema.gpa);
+                        if (child_type.isSlice(mod)) try sema.errNote(block, src, msg, "slice values have 'len' and 'ptr' members", .{});
+                        if (child_type.zigTypeTag(mod) == .Array) try sema.errNote(block, src, msg, "array values have 'len' member", .{});
+                        break :msg msg;
+                    };
+                    return sema.failWithOwnedErrorMsg(block, msg);
+                },
+            }
+        },
+        .Struct => if (is_pointer_to) {
+            // Avoid loading the entire struct by fetching a pointer and loading that
+            const field_ptr = try sema.structFieldPtr(block, src, object, member_name, member_name_src, inner_ty, false);
+            return sema.analyzeLoad(block, src, field_ptr, object_src);
+        } else {
+            return sema.structFieldVal(block, src, object, member_name, member_name_src, inner_ty);
+        },
+        .Union => if (is_pointer_to) {
+            // Avoid loading the entire union by fetching a pointer and loading that
+            const field_ptr = try sema.unionFieldPtr(block, src, object, member_name, member_name_src, inner_ty, false);
+            return sema.analyzeLoad(block, src, field_ptr, object_src);
+        } else {
+            return sema.unionFieldVal(block, src, object, member_name, member_name_src, inner_ty);
+        },
+        else => {},
+    }
+    return sema.failWithInvalidFieldAccess(block, src, object_ty, member_name);
+}
+
+fn memberPtr(
+    sema: *Sema,
+    block: *Block,
+    src: LazySrcLoc,
+    object_ptr: Air.Inst.Ref,
+    member_name: InternPool.NullTerminatedString,
+    member_name_src: LazySrcLoc,
+    initializing: bool,
+) CompileError!Air.Inst.Ref {
+    // When editing this function, note that there is corresponding logic to be edited
+    // in `memberVal`. This function takes a pointer and returns a pointer.
+
+    const mod = sema.mod;
+    const ip = &mod.intern_pool;
+    const object_ptr_src = src; // TODO better source location
+    const object_ptr_ty = sema.typeOf(object_ptr);
+    const object_ty = switch (object_ptr_ty.zigTypeTag(mod)) {
+        .Pointer => object_ptr_ty.childType(mod),
+        else => return sema.fail(block, object_ptr_src, "expected pointer, found '{}'", .{object_ptr_ty.fmt(mod)}),
+    };
+
+    // Zig allows dereferencing a single pointer during field lookup. Note that
+    // we don't actually need to generate the dereference some field lookups, like the
+    // length of arrays and other comptime operations.
+    const is_pointer_to = object_ty.isSinglePointer(mod);
+
+    const inner_ty = if (is_pointer_to)
+        object_ty.childType(mod)
+    else
+        object_ty;
+
+    switch (inner_ty.zigTypeTag(mod)) {
+        .Array => {
+            if (ip.stringEqlSlice(member_name, "len")) {
+                const int_val = try mod.intValue(Type.usize, inner_ty.arrayLen(mod));
+                return anonDeclRef(sema, int_val.toIntern());
+            } else if (ip.stringEqlSlice(member_name, "ptr") and is_pointer_to) {
+                const ptr_info = object_ty.ptrInfo(mod);
+                const new_ptr_ty = try sema.ptrType(.{
+                    .child = Type.fromInterned(ptr_info.child).childType(mod).toIntern(),
+                    .sentinel = if (object_ty.sentinel(mod)) |s| s.toIntern() else .none,
+                    .flags = .{
+                        .size = .Many,
+                        .alignment = ptr_info.flags.alignment,
+                        .is_const = ptr_info.flags.is_const,
+                        .is_volatile = ptr_info.flags.is_volatile,
+                        .is_allowzero = ptr_info.flags.is_allowzero,
+                        .address_space = ptr_info.flags.address_space,
+                        .vector_index = ptr_info.flags.vector_index,
+                    },
+                    .packed_offset = ptr_info.packed_offset,
+                });
+                const ptr_ptr_info = object_ptr_ty.ptrInfo(mod);
+                const result_ty = try sema.ptrType(.{
+                    .child = new_ptr_ty.toIntern(),
+                    .sentinel = if (object_ptr_ty.sentinel(mod)) |s| s.toIntern() else .none,
+                    .flags = .{
+                        .alignment = ptr_ptr_info.flags.alignment,
+                        .is_const = ptr_ptr_info.flags.is_const,
+                        .is_volatile = ptr_ptr_info.flags.is_volatile,
+                        .is_allowzero = ptr_ptr_info.flags.is_allowzero,
+                        .address_space = ptr_ptr_info.flags.address_space,
+                        .vector_index = ptr_ptr_info.flags.vector_index,
+                    },
+                    .packed_offset = ptr_ptr_info.packed_offset,
+                });
+                return sema.bitCast(block, result_ty, object_ptr, src, null);
+            } else {
+                return sema.fail(
+                    block,
+                    member_name_src,
+                    "no member named '{}' in '{}'",
+                    .{ member_name.fmt(ip), object_ty.fmt(mod) },
+                );
+            }
+        },
+        .Pointer => if (inner_ty.isSlice(mod)) {
+            const inner_ptr = if (is_pointer_to)
+                try sema.analyzeLoad(block, src, object_ptr, object_ptr_src)
+            else
+                object_ptr;
+
+            const attr_ptr_ty = if (is_pointer_to) object_ty else object_ptr_ty;
+
+            if (ip.stringEqlSlice(member_name, "ptr")) {
+                const slice_ptr_ty = inner_ty.slicePtrFieldType(mod);
+
+                const result_ty = try sema.ptrType(.{
+                    .child = slice_ptr_ty.toIntern(),
+                    .flags = .{
+                        .is_const = !attr_ptr_ty.ptrIsMutable(mod),
+                        .is_volatile = attr_ptr_ty.isVolatilePtr(mod),
+                        .address_space = attr_ptr_ty.ptrAddressSpace(mod),
+                    },
+                });
+
+                if (try sema.resolveDefinedValue(block, object_ptr_src, inner_ptr)) |val| {
+                    return Air.internedToRef((try mod.intern(.{ .ptr = .{
+                        .ty = result_ty.toIntern(),
+                        .addr = .{ .field = .{
+                            .base = val.toIntern(),
+                            .index = Value.slice_ptr_index,
+                        } },
+                    } })));
+                }
+                try sema.requireRuntimeBlock(block, src, null);
+
+                const field_ptr = try block.addTyOp(.ptr_slice_ptr_ptr, result_ty, inner_ptr);
+                try sema.checkKnownAllocPtr(block, inner_ptr, field_ptr);
+                return field_ptr;
+            } else if (ip.stringEqlSlice(member_name, "len")) {
+                const result_ty = try sema.ptrType(.{
+                    .child = .usize_type,
+                    .flags = .{
+                        .is_const = !attr_ptr_ty.ptrIsMutable(mod),
+                        .is_volatile = attr_ptr_ty.isVolatilePtr(mod),
+                        .address_space = attr_ptr_ty.ptrAddressSpace(mod),
+                    },
+                });
+
+                if (try sema.resolveDefinedValue(block, object_ptr_src, inner_ptr)) |val| {
+                    return Air.internedToRef((try mod.intern(.{ .ptr = .{
+                        .ty = result_ty.toIntern(),
+                        .addr = .{ .field = .{
+                            .base = val.toIntern(),
+                            .index = Value.slice_len_index,
+                        } },
+                    } })));
+                }
+                try sema.requireRuntimeBlock(block, src, null);
+
+                const field_ptr = try block.addTyOp(.ptr_slice_len_ptr, result_ty, inner_ptr);
+                try sema.checkKnownAllocPtr(block, inner_ptr, field_ptr);
+                return field_ptr;
+            } else {
+                return sema.fail(
+                    block,
+                    member_name_src,
+                    "no member named '{}' in '{}'",
+                    .{ member_name.fmt(ip), object_ty.fmt(mod) },
+                );
+            }
+        },
+        .Type => {
+            _ = try sema.resolveConstDefinedValue(block, .unneeded, object_ptr, undefined);
+            const result = try sema.analyzeLoad(block, src, object_ptr, object_ptr_src);
+            const inner = if (is_pointer_to)
+                try sema.analyzeLoad(block, src, result, object_ptr_src)
+            else
+                result;
+
+            const val = (sema.resolveDefinedValue(block, src, inner) catch unreachable).?;
+            const child_type = val.toType();
+
+            if (child_type.typeDeclInst(mod)) |type_decl_inst| {
+                try sema.declareDependency(.{ .namespace_name = .{
+                    .namespace = type_decl_inst,
+                    .name = member_name,
+                } });
+            }
+
+            switch (child_type.zigTypeTag(mod)) {
+                .ErrorSet => {
+                    switch (ip.indexToKey(child_type.toIntern())) {
+                        .error_set_type => |error_set_type| blk: {
+                            if (error_set_type.nameIndex(ip, member_name) != null) {
+                                break :blk;
+                            }
+                            return sema.fail(block, src, "no error named '{}' in '{}'", .{
+                                member_name.fmt(ip), child_type.fmt(mod),
+                            });
+                        },
+                        .inferred_error_set_type => {
+                            return sema.fail(block, src, "TODO handle inferred error sets here", .{});
+                        },
+                        .simple_type => |t| {
+                            assert(t == .anyerror);
+                            _ = try mod.getErrorValue(member_name);
+                        },
+                        else => unreachable,
+                    }
+
+                    const error_set_type = if (!child_type.isAnyError(mod))
+                        child_type
+                    else
+                        try mod.singleErrorSetType(member_name);
+                    return anonDeclRef(sema, try mod.intern(.{ .err = .{
+                        .ty = error_set_type.toIntern(),
+                        .name = member_name,
+                    } }));
+                },
+                .Union => {
+                    if (try sema.namespaceLookupRef(block, src, child_type.getNamespaceIndex(mod), member_name)) |inst| {
+                        return inst;
+                    }
+                    try sema.resolveTypeFields(child_type);
+                    if (child_type.unionTagType(mod)) |enum_ty| {
+                        if (enum_ty.enumFieldIndex(member_name, mod)) |field_index| {
+                            const field_index_u32: u32 = @intCast(field_index);
+                            const idx_val = try mod.enumValueFieldIndex(enum_ty, field_index_u32);
+                            return anonDeclRef(sema, idx_val.toIntern());
+                        }
+                    }
+                    return sema.failWithBadMemberAccess(block, child_type, member_name_src, member_name, .@"field or declaration");
+                },
+                .Enum => {
+                    if (try sema.namespaceLookupRef(block, src, child_type.getNamespaceIndex(mod), member_name)) |inst| {
+                        return inst;
+                    }
+                    const field_index = child_type.enumFieldIndex(member_name, mod) orelse {
+                        return sema.failWithBadMemberAccess(block, child_type, member_name_src, member_name, .@"field or declaration");
+                    };
+                    const field_index_u32: u32 = @intCast(field_index);
+                    const idx_val = try mod.enumValueFieldIndex(child_type, field_index_u32);
+                    return anonDeclRef(sema, idx_val.toIntern());
+                },
+                .Struct, .Opaque => {
+                    if (try sema.namespaceLookupRef(block, src, child_type.getNamespaceIndex(mod), member_name)) |inst| {
+                        return inst;
+                    }
+                    return sema.failWithBadMemberAccess(block, child_type, member_name_src, member_name, .declaration);
+                },
+                else => return sema.fail(block, src, "type '{}' has no members", .{child_type.fmt(mod)}),
+            }
+        },
+        .Struct => {
+            const inner_ptr = if (is_pointer_to)
+                try sema.analyzeLoad(block, src, object_ptr, object_ptr_src)
+            else
+                object_ptr;
+            const field_ptr = try sema.structFieldPtr(block, src, inner_ptr, member_name, member_name_src, inner_ty, initializing);
+            try sema.checkKnownAllocPtr(block, inner_ptr, field_ptr);
+            return field_ptr;
+        },
+        .Union => {
+            const inner_ptr = if (is_pointer_to)
+                try sema.analyzeLoad(block, src, object_ptr, object_ptr_src)
+            else
+                object_ptr;
+            const field_ptr = try sema.unionFieldPtr(block, src, inner_ptr, member_name, member_name_src, inner_ty, initializing);
+            try sema.checkKnownAllocPtr(block, inner_ptr, field_ptr);
+            return field_ptr;
+        },
+        else => {},
+    }
+    return sema.failWithInvalidFieldAccess(block, src, object_ty, member_name);
+}
+
 const ResolvedFieldCallee = union(enum) {
     /// The LHS of the call was an actual field with this value.
     direct: Air.Inst.Ref,
@@ -27601,7 +28093,7 @@ fn fieldCallBind(
     field_name_src: LazySrcLoc,
 ) CompileError!ResolvedFieldCallee {
     // When editing this function, note that there is corresponding logic to be edited
-    // in `fieldVal`. This function takes a pointer and returns a pointer.
+    // in `memberVal`. This function takes a pointer and returns a pointer.
 
     const mod = sema.mod;
     const ip = &mod.intern_pool;

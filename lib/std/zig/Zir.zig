@@ -453,14 +453,6 @@ pub const Inst = struct {
         /// This instruction also accepts a pointer.
         /// Uses `pl_node` field. The AST node is the a.b syntax. Payload is Field.
         field_val,
-        /// Given a pointer to a struct or object that contains virtual fields, returns a pointer
-        /// to the named field. The field name is a comptime instruction. Used by @field.
-        /// Uses `pl_node` field. The AST node is the builtin call. Payload is FieldNamed.
-        field_ptr_named,
-        /// Given a struct or object that contains virtual fields, returns the named field.
-        /// The field name is a comptime instruction. Used by @field.
-        /// Uses `pl_node` field. The AST node is the builtin call. Payload is FieldNamed.
-        field_val_named,
         /// Returns a function type, or a function instance, depending on whether
         /// the body_len is 0. Calling convention is auto.
         /// Uses the `pl_node` union field. `payload_index` points to a `Func`.
@@ -905,6 +897,12 @@ pub const Inst = struct {
         /// Implements the `@hasField` builtin.
         /// Uses the `pl_node` union field. Payload is `Bin`.
         has_field,
+        /// Implements the `@field` builtin.
+        /// Uses the `pl_node` union field. Payload is `Bin`.
+        field_builtin_val,
+        /// Implements the `@field` builtin.
+        /// Uses the `pl_node` union field. Payload is `Bin`.
+        field_builtin_ptr,
 
         /// Implements the `@clz` builtin. Uses the `un_node` union field.
         clz,
@@ -1109,8 +1107,6 @@ pub const Inst = struct {
                 .export_value,
                 .field_ptr,
                 .field_val,
-                .field_ptr_named,
-                .field_val_named,
                 .func,
                 .func_inferred,
                 .func_fancy,
@@ -1213,6 +1209,8 @@ pub const Inst = struct {
                 .ptr_cast,
                 .truncate,
                 .has_field,
+                .field_builtin_val,
+                .field_builtin_ptr,
                 .clz,
                 .ctz,
                 .pop_count,
@@ -1410,8 +1408,6 @@ pub const Inst = struct {
                 .elem_val_imm,
                 .field_ptr,
                 .field_val,
-                .field_ptr_named,
-                .field_val_named,
                 .func,
                 .func_inferred,
                 .func_fancy,
@@ -1507,6 +1503,8 @@ pub const Inst = struct {
                 .ptr_cast,
                 .truncate,
                 .has_field,
+                .field_builtin_val,
+                .field_builtin_ptr,
                 .clz,
                 .ctz,
                 .pop_count,
@@ -1661,8 +1659,6 @@ pub const Inst = struct {
                 .export_value = .pl_node,
                 .field_ptr = .pl_node,
                 .field_val = .pl_node,
-                .field_ptr_named = .pl_node,
-                .field_val_named = .pl_node,
                 .func = .pl_node,
                 .func_inferred = .pl_node,
                 .func_fancy = .pl_node,
@@ -1772,6 +1768,8 @@ pub const Inst = struct {
                 .decl_builtin_ptr = .pl_node,
                 .decl_builtin_val = .pl_node,
                 .has_field = .pl_node,
+                .field_builtin_val = .pl_node,
+                .field_builtin_ptr = .pl_node,
 
                 .clz = .un_node,
                 .ctz = .un_node,
