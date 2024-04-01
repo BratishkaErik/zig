@@ -466,9 +466,13 @@ const Writer = struct {
 
             .switch_block_err_union => try self.writeSwitchBlockErrUnion(stream, inst),
 
-            .field_val,
-            .field_ptr,
-            => try self.writePlNodeField(stream, inst),
+            .member_val,
+            .member_ptr,
+            => try self.writePlNodeMember(stream, inst),
+
+            .member_builtin_ptr,
+            .member_builtin_val,
+            => try self.writePlNodeMemberNamed(stream, inst),
 
             .as_node, .as_shift_operand => try self.writeAs(stream, inst),
 
@@ -2272,12 +2276,21 @@ const Writer = struct {
         try self.writeSrc(stream, inst_data.src());
     }
 
-    fn writePlNodeFieldNamed(self: *Writer, stream: anytype, inst: Zir.Inst.Index) !void {
+    fn writePlNodeMember(self: *Writer, stream: anytype, inst: Zir.Inst.Index) !void {
         const inst_data = self.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
-        const extra = self.code.extraData(Zir.Inst.FieldNamed, inst_data.payload_index).data;
+        const extra = self.code.extraData(Zir.Inst.Member, inst_data.payload_index).data;
+        const name = self.code.nullTerminatedString(extra.member_name_start);
+        try self.writeInstRef(stream, extra.lhs);
+        try stream.print(", \"{}\") ", .{std.zig.fmtEscapes(name)});
+        try self.writeSrc(stream, inst_data.src());
+    }
+
+    fn writePlNodeMemberNamed(self: *Writer, stream: anytype, inst: Zir.Inst.Index) !void {
+        const inst_data = self.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
+        const extra = self.code.extraData(Zir.Inst.MemberNamed, inst_data.payload_index).data;
         try self.writeInstRef(stream, extra.lhs);
         try stream.writeAll(", ");
-        try self.writeInstRef(stream, extra.field_name);
+        try self.writeInstRef(stream, extra.member_name);
         try stream.writeAll(") ");
         try self.writeSrc(stream, inst_data.src());
     }

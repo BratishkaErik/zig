@@ -458,15 +458,15 @@ fn renderExpression(r: *Render, node: Ast.Node.Index, space: Space) Error!void {
             try renderExpression(r, datas[node].rhs, space); // fallback
         },
 
-        .field_access => {
+        .member_access => {
             const main_token = main_tokens[node];
-            const field_access = datas[node];
+            const member_access = datas[node];
 
-            try renderExpression(r, field_access.lhs, .none);
+            try renderExpression(r, member_access.lhs, .none);
 
             // Allow a line break between the lhs and the dot if the lhs and rhs
             // are on different lines.
-            const lhs_last_token = tree.lastToken(field_access.lhs);
+            const lhs_last_token = tree.lastToken(member_access.lhs);
             const same_line = tree.tokensOnSameLine(lhs_last_token, main_token + 1);
             if (!same_line) {
                 if (!hasComment(tree, lhs_last_token, main_token)) try ais.insertNewline();
@@ -484,7 +484,7 @@ fn renderExpression(r: *Render, node: Ast.Node.Index, space: Space) Error!void {
                 ais.pushIndentOneShot();
             }
 
-            return renderIdentifier(r, field_access.rhs, space, .eagerly_unquote); // field
+            return renderIdentifier(r, member_access.rhs, space, .eagerly_unquote); // field
         },
 
         .error_union,

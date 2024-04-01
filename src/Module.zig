@@ -1341,7 +1341,7 @@ pub const SrcLoc = struct {
                 const node = src_loc.declRelativeToNodeIndex(node_off);
                 var buf: [1]Ast.Node.Index = undefined;
                 const tok_index = switch (node_tags[node]) {
-                    .field_access => node_datas[node].rhs,
+                    .member_access => node_datas[node].rhs,
                     .call_one,
                     .call_one_comma,
                     .async_call_one,

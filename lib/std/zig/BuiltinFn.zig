@@ -48,7 +48,6 @@ pub const Tag = enum {
     @"export",
     @"extern",
     fence,
-    field,
     field_parent_ptr,
     float_cast,
     int_from_float,
@@ -66,6 +65,7 @@ pub const Tag = enum {
     float_from_int,
     ptr_from_int,
     max,
+    member,
     memcpy,
     memset,
     min,
@@ -487,7 +487,7 @@ pub const list = list: {
         .{
             "@field",
             .{
-                .tag = .field,
+                .tag = .member,
                 .eval_to_error = .maybe,
                 .param_count = 2,
                 .allows_lvalue = true,
@@ -612,6 +612,15 @@ pub const list = list: {
             .{
                 .tag = .max,
                 .param_count = null,
+            },
+        },
+        .{
+            "@member",
+            .{
+                .tag = .member,
+                .eval_to_error = .maybe,
+                .param_count = 2,
+                .allows_lvalue = true,
             },
         },
         .{

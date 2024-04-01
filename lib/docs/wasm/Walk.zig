@@ -181,14 +181,14 @@ pub const File = struct {
                     return .{ .global_const = node };
                 },
 
-                .field_access => {
+                .member_access => {
                     const object_node = node_datas[node].lhs;
                     const dot_token = main_tokens[node];
-                    const field_ident = dot_token + 1;
-                    const field_name = ast.tokenSlice(field_ident);
+                    const member_ident = dot_token + 1;
+                    const member_name = ast.tokenSlice(member_ident);
 
                     switch (categorize_expr(file_index, object_node)) {
-                        .alias => |aliasee| if (aliasee.get().get_child(field_name)) |decl_index| {
+                        .alias => |aliasee| if (aliasee.get().get_child(member_name)) |decl_index| {
                             return .{ .alias = decl_index };
                         },
                         else => {},
@@ -733,12 +733,12 @@ fn expr(w: *Walk, scope: *Scope, parent_decl: Decl.Index, node: Ast.Node.Index) 
                 try w.file.get().ident_decls.put(gpa, ident_token, var_node);
             }
         },
-        .field_access => {
+        .member_access => {
             const object_node = node_datas[node].lhs;
             const dot_token = main_tokens[node];
-            const field_ident = dot_token + 1;
-            try w.file.get().token_parents.put(gpa, field_ident, node);
-            // This will populate the left-most field object if it is an
+            const member_ident = dot_token + 1;
+            try w.file.get().token_parents.put(gpa, member_ident, node);
+            // This will populate the left-most member object if it is an
             // identifier, allowing rendering code to piece together the link.
             try expr(w, scope, parent_decl, object_node);
         },

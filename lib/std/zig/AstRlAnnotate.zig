@@ -367,7 +367,7 @@ fn expr(astrl: *AstRlAnnotate, node: Ast.Node.Index, block: ?*Block, ri: ResultI
             return false;
         },
 
-        .field_access => {
+        .member_access => {
             _ = try astrl.expr(node_datas[node].lhs, block, ResultInfo.none);
             return false;
         },
@@ -980,7 +980,7 @@ fn builtinCall(astrl: *AstRlAnnotate, block: ?*Block, ri: ResultInfo, node: Ast.
         .has_decl,
         .decl,
         .has_field,
-        .field,
+        .member,
         => {
             _ = try astrl.expr(args[0], block, ResultInfo.type_only);
             _ = try astrl.expr(args[1], block, ResultInfo.type_only);

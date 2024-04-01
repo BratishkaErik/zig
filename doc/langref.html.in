@@ -8561,7 +8561,7 @@ test "@decl" {
     try expect(@decl(Point, "z") == 2);
 }
       {#code_end#}
-      {#see_also|@field#}
+      {#see_also|@field|@member#}
       {#header_close#}
 
       {#header_open|@divExact#}
@@ -8775,8 +8775,12 @@ test "decl access by string" {
     try expect(@field(Point, "z") == 2);
 }
       {#code_end#}
+<<<<<<< HEAD
 
       {#see_also|@decl#}
+=======
+      {#see_also|@decl|@member#}
+>>>>>>> 9eaadc9e4a (add `@member` builtin (same as current `@field`))
       {#header_close#}
 
       {#header_open|@fieldParentPtr#}
@@ -9004,6 +9008,41 @@ test "integer cast panic" {
       NaNs are handled as follows: if one of the operands of a (pairwise) operation is NaN, the other operand is returned. If both operands are NaN, NaN is returned.
       </p>
       {#see_also|@min|Vectors#}
+      {#header_close#}
+
+      {#header_open|@member#}
+      <pre>{#syntax#}@member(container_instance_or_ContainerType: anytype, comptime member_name: []const u8) (field){#endsyntax#}</pre>
+      <p>Performs member access by a compile-time string. Works on both fields and declarations.
+      </p>
+      {#code_begin|test|test_member_builtin#}
+const std = @import("std");
+const expect = std.testing.expect;
+
+const Point = struct {
+    x: u32,
+    y: u32,
+
+    pub var z: u32 = 1;
+};
+
+test "field access by string" {
+    var p = Point{ .x = 0, .y = 0 };
+
+    @member(p, "x") = 4;
+    @member(p, "y") = @member(p, "x") + 1;
+
+    try expect(@member(p, "x") == 4);
+    try expect(@member(p, "y") == 5);
+}
+
+test "decl access by string" {
+    try expect(@member(Point, "z") == 1);
+
+    @member(Point, "z") = 2;
+    try expect(@member(Point, "z") == 2);
+}
+      {#code_end#}
+      {#see_also|@decl|@field#}
       {#header_close#}
 
       {#header_open|@memcpy#}

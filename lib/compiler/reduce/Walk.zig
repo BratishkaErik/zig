@@ -271,9 +271,9 @@ fn walkExpression(w: *Walk, node: Ast.Node.Index) Error!void {
             try walkExpression(w, datas[node].rhs); // fallback
         },
 
-        .field_access => {
-            const field_access = datas[node];
-            try walkExpression(w, field_access.lhs);
+        .member_access => {
+            const member_access = datas[node];
+            try walkExpression(w, member_access.lhs);
         },
 
         .error_union,

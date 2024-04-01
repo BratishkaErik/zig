@@ -444,15 +444,28 @@ pub const Inst = struct {
         /// The thing being exported is the comptime-known value which is the operand.
         /// Uses the `pl_node` union field. Payload is `ExportValue`.
         export_value,
+
         /// Given a pointer to a struct or object that contains virtual fields, returns a pointer
-        /// to the named field. The field name is stored in string_bytes. Used by a.b syntax.
-        /// Uses `pl_node` field. The AST node is the a.b syntax. Payload is Field.
-        field_ptr,
-        /// Given a struct or object that contains virtual fields, returns the named field.
-        /// The field name is stored in string_bytes. Used by a.b syntax.
+        /// to the named member. The member name is stored in string_bytes. Used by a.b syntax.
+        /// Uses `pl_node` field. The AST node is the a.b syntax. Payload is Member.
+        member_ptr,
+        /// Given a struct or object that contains virtual fields, returns the named member.
+        /// The member name is stored in string_bytes. Used by a.b syntax.
         /// This instruction also accepts a pointer.
         /// Uses `pl_node` field. The AST node is the a.b syntax. Payload is Field.
         field_val,
+        
+        /// Uses `pl_node` field. The AST node is the a.b syntax. Payload is Member.
+        member_val,
+        /// Given a pointer to a struct or object that contains virtual fields, returns a pointer
+        /// to the named member. The member name is a comptime instruction. Used by @member and @field.
+        /// Uses `pl_node` field. The AST node is the builtin call. Payload is MemberNamed.
+        member_builtin_ptr,
+        /// Given a struct or object that contains virtual fields, returns the named member.
+        /// The member name is a comptime instruction. Used by @member and @field.
+        /// Uses `pl_node` field. The AST node is the builtin call. Payload is MemberNamed.
+        member_builtin_val,
+
         /// Returns a function type, or a function instance, depending on whether
         /// the body_len is 0. Calling convention is auto.
         /// Uses the `pl_node` union field. `payload_index` points to a `Func`.
@@ -1107,6 +1120,10 @@ pub const Inst = struct {
                 .export_value,
                 .field_ptr,
                 .field_val,
+                .member_ptr,
+                .member_val,
+                .member_builtin_ptr,
+                .member_builtin_val,
                 .func,
                 .func_inferred,
                 .func_fancy,
@@ -1408,6 +1425,10 @@ pub const Inst = struct {
                 .elem_val_imm,
                 .field_ptr,
                 .field_val,
+                .member_ptr,
+                .member_val,
+                .member_builtin_ptr,
+                .member_builtin_val,
                 .func,
                 .func_inferred,
                 .func_fancy,
@@ -1659,6 +1680,10 @@ pub const Inst = struct {
                 .export_value = .pl_node,
                 .field_ptr = .pl_node,
                 .field_val = .pl_node,
+                .member_ptr = .pl_node,
+                .member_val = .pl_node,
+                .member_builtin_ptr = .pl_node,
+                .member_builtin_val = .pl_node,
                 .func = .pl_node,
                 .func_inferred = .pl_node,
                 .func_fancy = .pl_node,
@@ -2998,9 +3023,15 @@ pub const Inst = struct {
         field_name_start: NullTerminatedString,
     };
 
-    pub const FieldNamed = struct {
+    pub const Member = struct {
         lhs: Ref,
-        field_name: Ref,
+        /// Offset into `string_bytes`.
+        member_name_start: NullTerminatedString,
+    };
+
+    pub const MemberNamed = struct {
+        lhs: Ref,
+        member_name: Ref,
     };
 
     pub const As = struct {

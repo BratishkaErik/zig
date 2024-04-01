@@ -1040,8 +1040,10 @@ fn analyzeBodyInner(
             .err_union_payload_unsafe_ptr => try sema.zirErrUnionPayloadPtr(block, inst),
             .error_union_type             => try sema.zirErrorUnionType(block, inst),
             .error_value                  => try sema.zirErrorValue(block, inst),
-            .field_ptr                    => try sema.zirFieldPtr(block, inst),
-            .field_val                    => try sema.zirFieldVal(block, inst),
+            .member_ptr                   => try sema.zirMemberPtr(block, inst),
+            .member_builtin_ptr           => try sema.zirMemberBuiltinRef(block, inst),
+            .member_val                   => try sema.zirMemberVal(block, inst),
+            .member_builtin_val           => try sema.zirMemberBuiltinVal(block, inst),
             .func                         => try sema.zirFunc(block, inst, false),
             .func_inferred                => try sema.zirFunc(block, inst, true),
             .func_fancy                   => try sema.zirFuncFancy(block, inst),
@@ -2062,12 +2064,12 @@ pub fn setupErrorReturnTrace(sema: *Sema, block: *Block, last_arg_index: usize) 
 
     // st.instruction_addresses = &addrs;
     const instruction_addresses_field_name = try ip.getOrPutString(gpa, "instruction_addresses");
-    const addr_field_ptr = try sema.fieldPtr(&err_trace_block, src, st_ptr, instruction_addresses_field_name, src, true);
+    const addr_field_ptr = try sema.memberPtr(&err_trace_block, src, st_ptr, instruction_addresses_field_name, src, true);
     try sema.storePtr2(&err_trace_block, src, addr_field_ptr, src, addrs_ptr, src, .store);
 
     // st.index = 0;
     const index_field_name = try ip.getOrPutString(gpa, "index");
-    const index_field_ptr = try sema.fieldPtr(&err_trace_block, src, st_ptr, index_field_name, src, true);
+    const index_field_ptr = try sema.memberPtr(&err_trace_block, src, st_ptr, index_field_name, src, true);
     try sema.storePtr2(&err_trace_block, src, index_field_ptr, src, .zero_usize, src, .store);
 
     // @errorReturnTrace() = &st;
@@ -3638,7 +3640,7 @@ fn indexablePtrLen(
     const indexable_ty = if (is_pointer_to) object_ty.childType(mod) else object_ty;
     try checkIndexable(sema, block, src, indexable_ty);
     const field_name = try mod.intern_pool.getOrPutString(sema.gpa, "len");
-    return sema.fieldVal(block, src, object, field_name, src);
+    return sema.memberVal(block, src, object, field_name, src);
 }
 
 fn indexablePtrLenOrNone(
@@ -3652,7 +3654,7 @@ fn indexablePtrLenOrNone(
     try checkMemOperand(sema, block, src, operand_ty);
     if (operand_ty.ptrSize(mod) == .Many) return .none;
     const field_name = try mod.intern_pool.getOrPutString(sema.gpa, "len");
-    return sema.fieldVal(block, src, operand, field_name, src);
+    return sema.memberVal(block, src, operand, field_name, src);
 }
 
 fn zirAllocExtended(
@@ -4365,7 +4367,7 @@ fn zirForLen(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.
             }
             if (!object_ty.indexableHasLen(mod)) continue;
 
-            break :l try sema.fieldVal(block, arg_src, object, try ip.getOrPutString(gpa, "len"), arg_src);
+            break :l try sema.memberVal(block, arg_src, object, try ip.getOrPutString(gpa, "len"), arg_src);
         };
         const arg_len = try sema.coerce(block, Type.usize, arg_len_uncoerced, arg_src);
         if (len == .none) {
@@ -10212,7 +10214,7 @@ fn zirIntFromPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!
     return block.addAggregateInit(dest_ty, new_elems);
 }
 
-fn zirFieldVal(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+fn zirMemberVal(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
     const tracy = trace(@src());
     defer tracy.end();
 
@@ -10223,10 +10225,10 @@ fn zirFieldVal(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
     const extra = sema.code.extraData(Zir.Inst.Field, inst_data.payload_index).data;
     const field_name = try mod.intern_pool.getOrPutString(sema.gpa, sema.code.nullTerminatedString(extra.field_name_start));
     const object = try sema.resolveInst(extra.lhs);
-    return sema.fieldVal(block, src, object, field_name, field_name_src);
+    return sema.memberVal(block, src, object, field_name, field_name_src);
 }
 
-fn zirFieldPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+fn zirMemberPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
     const tracy = trace(@src());
     defer tracy.end();
 
@@ -10237,7 +10239,7 @@ fn zirFieldPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Ai
     const extra = sema.code.extraData(Zir.Inst.Field, inst_data.payload_index).data;
     const field_name = try mod.intern_pool.getOrPutString(sema.gpa, sema.code.nullTerminatedString(extra.field_name_start));
     const object_ptr = try sema.resolveInst(extra.lhs);
-    return sema.fieldPtr(block, src, object_ptr, field_name, field_name_src, false);
+    return sema.memberPtr(block, src, object_ptr, field_name, field_name_src, false);
 }
 
 fn zirStructInitFieldPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
@@ -10254,7 +10256,7 @@ fn zirStructInitFieldPtr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Compi
     const struct_ty = sema.typeOf(object_ptr).childType(mod);
     switch (struct_ty.zigTypeTag(mod)) {
         .Struct, .Union => {
-            return sema.fieldPtr(block, src, object_ptr, field_name, field_name_src, true);
+            return sema.memberPtr(block, src, object_ptr, field_name, field_name_src, true);
         },
         else => {
             return sema.failWithStructInitNotSupported(block, src, struct_ty);
@@ -10286,6 +10288,37 @@ fn zirFieldBuiltin(
         .ptr => try sema.fieldPtr(block, src, object_or_object_ptr, field_name, field_name_src, false),
         .val => try sema.fieldVal(block, src, object_or_object_ptr, field_name, field_name_src),
     };
+}
+
+fn zirMemberBuiltinVal(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const tracy = trace(@src());
+    defer tracy.end();
+
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
+    const src = inst_data.src();
+    const field_name_src: LazySrcLoc = .{ .node_offset_builtin_call_arg1 = inst_data.src_node };
+
+    const extra = sema.code.extraData(Zir.Inst.MemberNamed, inst_data.payload_index).data;
+    const object = try sema.resolveInst(extra.lhs);
+    const field_name = try sema.resolveConstStringIntern(block, field_name_src, extra.member_name, .{
+        .needed_comptime_reason = "field name must be comptime-known",
+    });
+    return sema.memberVal(block, src, object, field_name, field_name_src);
+}
+
+fn zirMemberBuiltinRef(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
+    const tracy = trace(@src());
+    defer tracy.end();
+
+    const inst_data = sema.code.instructions.items(.data)[@intFromEnum(inst)].pl_node;
+    const src = inst_data.src();
+    const field_name_src: LazySrcLoc = .{ .node_offset_builtin_call_arg1 = inst_data.src_node };
+    const extra = sema.code.extraData(Zir.Inst.MemberNamed, inst_data.payload_index).data;
+    const object_ptr = try sema.resolveInst(extra.lhs);
+    const field_name = try sema.resolveConstStringIntern(block, field_name_src, extra.member_name, .{
+        .needed_comptime_reason = "field name must be comptime-known",
+    });
+    return sema.memberPtr(block, src, object_ptr, field_name, field_name_src, false);
 }
 
 fn zirIntCast(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!Air.Inst.Ref {
@@ -13643,7 +13676,7 @@ fn maybeErrorUnwrap(
             .str,
             .as_node,
             .panic,
-            .field_val,
+            .member_val,
             => {},
             else => return false,
         }
@@ -13662,7 +13695,7 @@ fn maybeErrorUnwrap(
             },
             .str => try sema.zirStr(inst),
             .as_node => try sema.zirAsNode(block, inst),
-            .field_val => try sema.zirFieldVal(block, inst),
+            .member_val => try sema.zirMemberVal(block, inst),
             .@"unreachable" => {
                 if (!mod.comp.formatted_panics) {
                     try sema.safetyPanic(block, operand_src, .unwrap_error);
@@ -24021,18 +24054,18 @@ fn resolveExportOptions(
     const section_src = sema.maybeOptionsSrc(block, src, "section");
     const visibility_src = sema.maybeOptionsSrc(block, src, "visibility");
 
-    const name_operand = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "name"), name_src);
+    const name_operand = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "name"), name_src);
     const name = try sema.toConstString(block, name_src, name_operand, .{
         .needed_comptime_reason = "name of exported value must be comptime-known",
     });
 
-    const linkage_operand = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "linkage"), linkage_src);
+    const linkage_operand = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "linkage"), linkage_src);
     const linkage_val = try sema.resolveConstDefinedValue(block, linkage_src, linkage_operand, .{
         .needed_comptime_reason = "linkage of exported value must be comptime-known",
     });
     const linkage = mod.toEnum(std.builtin.GlobalLinkage, linkage_val);
 
-    const section_operand = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "section"), section_src);
+    const section_operand = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "section"), section_src);
     const section_opt_val = try sema.resolveConstDefinedValue(block, section_src, section_operand, .{
         .needed_comptime_reason = "linksection of exported value must be comptime-known",
     });
@@ -24043,7 +24076,7 @@ fn resolveExportOptions(
     else
         null;
 
-    const visibility_operand = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "visibility"), visibility_src);
+    const visibility_operand = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "visibility"), visibility_src);
     const visibility_val = try sema.resolveConstDefinedValue(block, visibility_src, visibility_operand, .{
         .needed_comptime_reason = "visibility of exported value must be comptime-known",
     });
@@ -25622,7 +25655,7 @@ fn zirMemset(sema: *Sema, block: *Block, inst: Zir.Inst.Index) CompileError!void
 
     const runtime_src = rs: {
         const ptr_val = try sema.resolveDefinedValue(block, dest_src, dest_ptr) orelse break :rs dest_src;
-        const len_air_ref = try sema.fieldVal(block, src, dest_ptr, try ip.getOrPutString(gpa, "len"), dest_src);
+        const len_air_ref = try sema.memberVal(block, src, dest_ptr, try ip.getOrPutString(gpa, "len"), dest_src);
         const len_val = (try sema.resolveDefinedValue(block, dest_src, len_air_ref)) orelse break :rs dest_src;
         const len_u64 = (try len_val.getUnsignedIntAdvanced(mod, sema)).?;
         const len = try sema.usizeCast(block, dest_src, len_u64);
@@ -26120,17 +26153,17 @@ fn resolvePrefetchOptions(
     const locality_src = sema.maybeOptionsSrc(block, src, "locality");
     const cache_src = sema.maybeOptionsSrc(block, src, "cache");
 
-    const rw = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "rw"), rw_src);
+    const rw = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "rw"), rw_src);
     const rw_val = try sema.resolveConstDefinedValue(block, rw_src, rw, .{
         .needed_comptime_reason = "prefetch read/write must be comptime-known",
     });
 
-    const locality = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "locality"), locality_src);
+    const locality = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "locality"), locality_src);
     const locality_val = try sema.resolveConstDefinedValue(block, locality_src, locality, .{
         .needed_comptime_reason = "prefetch locality must be comptime-known",
     });
 
-    const cache = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "cache"), cache_src);
+    const cache = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "cache"), cache_src);
     const cache_val = try sema.resolveConstDefinedValue(block, cache_src, cache, .{
         .needed_comptime_reason = "prefetch cache must be comptime-known",
     });
@@ -26199,23 +26232,23 @@ fn resolveExternOptions(
     const linkage_src = sema.maybeOptionsSrc(block, src, "linkage");
     const thread_local_src = sema.maybeOptionsSrc(block, src, "thread_local");
 
-    const name_ref = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "name"), name_src);
+    const name_ref = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "name"), name_src);
     const name = try sema.toConstString(block, name_src, name_ref, .{
         .needed_comptime_reason = "name of the extern symbol must be comptime-known",
     });
 
-    const library_name_inst = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "library_name"), library_src);
+    const library_name_inst = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "library_name"), library_src);
     const library_name_val = try sema.resolveConstDefinedValue(block, library_src, library_name_inst, .{
         .needed_comptime_reason = "library in which extern symbol is must be comptime-known",
     });
 
-    const linkage_ref = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "linkage"), linkage_src);
+    const linkage_ref = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "linkage"), linkage_src);
     const linkage_val = try sema.resolveConstDefinedValue(block, linkage_src, linkage_ref, .{
         .needed_comptime_reason = "linkage of the extern symbol must be comptime-known",
     });
     const linkage = mod.toEnum(std.builtin.GlobalLinkage, linkage_val);
 
-    const is_thread_local = try sema.fieldVal(block, src, options, try ip.getOrPutString(gpa, "is_thread_local"), thread_local_src);
+    const is_thread_local = try sema.memberVal(block, src, options, try ip.getOrPutString(gpa, "is_thread_local"), thread_local_src);
     const is_thread_local_val = try sema.resolveConstDefinedValue(block, thread_local_src, is_thread_local, .{
         .needed_comptime_reason = "threadlocality of the extern symbol must be comptime-known",
     });
@@ -27145,7 +27178,7 @@ fn emitBackwardBranch(sema: *Sema, block: *Block, src: LazySrcLoc) !void {
     }
 }
 
-fn fieldVal(
+fn memberVal(
     sema: *Sema,
     block: *Block,
     src: LazySrcLoc,
@@ -27363,7 +27396,7 @@ fn fieldVal(
     return sema.failWithInvalidFieldAccess(block, src, object_ty, field_name);
 }
 
-fn fieldPtr(
+fn memberPtr(
     sema: *Sema,
     block: *Block,
     src: LazySrcLoc,
@@ -28150,7 +28183,7 @@ fn fieldCallBind(
             },
             .Type => {
                 const namespace = try sema.analyzeLoad(block, src, object_ptr, src);
-                return .{ .direct = try sema.fieldVal(block, src, namespace, field_name, field_name_src) };
+                return .{ .direct = try sema.memberVal(block, src, namespace, field_name, field_name_src) };
             },
             else => {},
         }

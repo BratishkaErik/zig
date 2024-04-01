@@ -2195,7 +2195,7 @@ fn renderRecord(c: *Context, node: Node) !NodeIndex {
 
 fn renderFieldAccess(c: *Context, lhs: NodeIndex, field_name: []const u8) !NodeIndex {
     return c.addNode(.{
-        .tag = .field_access,
+        .tag = .member_access,
         .main_token = try c.addToken(.period, "."),
         .data = .{
             .lhs = lhs,

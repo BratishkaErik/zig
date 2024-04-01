@@ -3556,7 +3556,7 @@ fn parseSuffixOp(p: *Parse, lhs: Node.Index) !Node.Index {
         },
         .period => switch (p.token_tags[p.tok_i + 1]) {
             .identifier => return p.addNode(.{
-                .tag = .field_access,
+                .tag = .member_access,
                 .main_token = p.nextToken(),
                 .data = .{
                     .lhs = lhs,

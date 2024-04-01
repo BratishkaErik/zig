@@ -926,7 +926,7 @@ fn file_source_html(
     const file = file_index.get();
 
     const g = struct {
-        var field_access_buffer: std.ArrayListUnmanaged(u8) = .{};
+        var member_access_buffer: std.ArrayListUnmanaged(u8) = .{};
     };
 
     const token_tags = ast.tokens.items(.tag);
@@ -1091,13 +1091,13 @@ fn file_source_html(
                     break :i;
                 }
 
-                if (file.token_parents.get(token_index)) |field_access_node| {
-                    g.field_access_buffer.clearRetainingCapacity();
-                    try walk_field_accesses(file_index, &g.field_access_buffer, field_access_node);
-                    if (g.field_access_buffer.items.len > 0) {
+                if (file.token_parents.get(token_index)) |member_access_node| {
+                    g.member_access_buffer.clearRetainingCapacity();
+                    try walk_member_accesses(file_index, &g.member_access_buffer, member_access_node);
+                    if (g.member_access_buffer.items.len > 0) {
                         try out.appendSlice(gpa, "<a href=\"#");
                         _ = missing_feature_url_escape;
-                        try out.appendSlice(gpa, g.field_access_buffer.items);
+                        try out.appendSlice(gpa, g.member_access_buffer.items);
                         try out.appendSlice(gpa, "\">");
                         try appendEscaped(out, slice);
                         try out.appendSlice(gpa, "</a>");
@@ -1108,12 +1108,12 @@ fn file_source_html(
                 }
 
                 {
-                    g.field_access_buffer.clearRetainingCapacity();
-                    try resolve_ident_link(file_index, &g.field_access_buffer, token_index);
-                    if (g.field_access_buffer.items.len > 0) {
+                    g.member_access_buffer.clearRetainingCapacity();
+                    try resolve_ident_link(file_index, &g.member_access_buffer, token_index);
+                    if (g.member_access_buffer.items.len > 0) {
                         try out.appendSlice(gpa, "<a href=\"#");
                         _ = missing_feature_url_escape;
-                        try out.appendSlice(gpa, g.field_access_buffer.items);
+                        try out.appendSlice(gpa, g.member_access_buffer.items);
                         try out.appendSlice(gpa, "\">");
                         try appendEscaped(out, slice);
                         try out.appendSlice(gpa, "</a>");
@@ -1243,32 +1243,32 @@ fn resolve_decl_link(decl_index: Decl.Index, out: *std.ArrayListUnmanaged(u8)) O
     }
 }
 
-fn walk_field_accesses(
+fn walk_member_accesses(
     file_index: Walk.File.Index,
     out: *std.ArrayListUnmanaged(u8),
     node: Ast.Node.Index,
 ) Oom!void {
     const ast = file_index.get_ast();
     const node_tags = ast.nodes.items(.tag);
-    assert(node_tags[node] == .field_access);
+    assert(node_tags[node] == .member_access);
     const node_datas = ast.nodes.items(.data);
     const main_tokens = ast.nodes.items(.main_token);
     const object_node = node_datas[node].lhs;
     const dot_token = main_tokens[node];
-    const field_ident = dot_token + 1;
+    const member_ident = dot_token + 1;
     switch (node_tags[object_node]) {
         .identifier => {
             const lhs_ident = main_tokens[object_node];
             try resolve_ident_link(file_index, out, lhs_ident);
         },
-        .field_access => {
-            try walk_field_accesses(file_index, out, object_node);
+        .member_access => {
+            try walk_member_accesses(file_index, out, object_node);
         },
         else => {},
     }
     if (out.items.len > 0) {
         try out.append(gpa, '.');
-        try out.appendSlice(gpa, ast.tokenSlice(field_ident));
+        try out.appendSlice(gpa, ast.tokenSlice(member_ident));
     }
 }
 

@@ -537,7 +537,7 @@ pub fn firstToken(tree: Ast, node: Node.Index) TokenIndex {
         => return main_tokens[n] - 1 - end_offset,
 
         .@"catch",
-        .field_access,
+        .member_access,
         .unwrap_optional,
         .equal_equal,
         .bang_equal,
@@ -896,7 +896,7 @@ pub fn lastToken(tree: Ast, node: Node.Index) TokenIndex {
             return main_tokens[n] + end_offset;
         },
 
-        .field_access,
+        .member_access,
         .unwrap_optional,
         .grouped_expression,
         .multiline_string_literal,
@@ -3014,7 +3014,7 @@ pub const Node = struct {
         /// payload is determined by looking at the next token after the `catch` keyword.
         @"catch",
         /// `lhs.a`. main_token is the dot. rhs is the identifier token index.
-        field_access,
+        member_access,
         /// `lhs.?`. main_token is the dot. rhs is the `?` token index.
         unwrap_optional,
         /// `lhs == rhs`. main_token is op.

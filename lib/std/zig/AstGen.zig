@@ -603,7 +603,7 @@ fn lvalExpr(gz: *GenZir, scope: *Scope, node: Ast.Node.Index) InnerError!Zir.Ins
         // These can be assigned to.
         .unwrap_optional,
         .deref,
-        .field_access,
+        .member_access,
         .array_access,
         .identifier,
         .grouped_expression,
@@ -845,7 +845,7 @@ fn expr(gz: *GenZir, scope: *Scope, ri: ResultInfo, node: Ast.Node.Index) InnerE
             return Zir.Inst.Ref.unreachable_value;
         },
         .@"return" => return ret(gz, scope, node),
-        .field_access => return fieldAccess(gz, scope, ri, node),
+        .member_access => return memberAccess(gz, scope, ri, node),
 
         .if_simple,
         .@"if",
@@ -2668,8 +2668,10 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .elem_ptr_node,
             .elem_val_node,
             .elem_val_imm,
-            .field_ptr,
-            .field_val,
+            .member_ptr,
+            .member_val,
+            .member_builtin_ptr,
+            .member_builtin_val,
             .func,
             .func_inferred,
             .func_fancy,
@@ -6066,22 +6068,22 @@ fn tokenIdentEql(astgen: *AstGen, token1: Ast.TokenIndex, token2: Ast.TokenIndex
     return mem.eql(u8, ident_name_1, ident_name_2);
 }
 
-fn fieldAccess(
+fn memberAccess(
     gz: *GenZir,
     scope: *Scope,
     ri: ResultInfo,
     node: Ast.Node.Index,
 ) InnerError!Zir.Inst.Ref {
-    switch (ri.rl) {
-        .ref, .ref_coerced_ty => return addFieldAccess(.field_ptr, gz, scope, .{ .rl = .ref }, node),
-        else => {
-            const access = try addFieldAccess(.field_val, gz, scope, .{ .rl = .none }, node);
-            return rvalue(gz, ri, access, node);
+    return switch (ri.rl) {
+        .ref, .ref_coerced_ty => try addMemberAccess(.member_ptr, gz, scope, .{ .rl = .ref }, node),
+        else => rvalue: {
+            const access = try addMemberAccess(.member_val, gz, scope, .{ .rl = .none }, node);
+            break :rvalue try rvalue(gz, ri, access, node);
         },
-    }
+    };
 }
 
-fn addFieldAccess(
+fn addMemberAccess(
     tag: Zir.Inst.Tag,
     gz: *GenZir,
     scope: *Scope,
@@ -9141,7 +9143,11 @@ fn builtinCall(
             const result = try gz.addExtendedMultiOpPayloadIndex(.compile_log, payload_index, params.len);
             return rvalue(gz, ri, result, node);
         },
+<<<<<<< HEAD
         .decl, .field => |builtin_tag| return switch (ri.rl) {
+=======
+        inline .decl, .field, .member => |builtin_tag| return switch (ri.rl) {
+>>>>>>> 9eaadc9e4a (add `@member` builtin (same as current `@field`))
             .ref, .ref_coerced_ty => ref: {
                 const container_or_container_type = try expr(gz, scope, .{ .rl = .ref }, params[0]);
                 const decl_name = try comptimeExpr(gz, scope, .{ .rl = .{ .coerced_ty = .slice_const_u8_type } }, params[1]);
@@ -9153,7 +9159,11 @@ fn builtinCall(
                     else => unreachable,
 =======
                     .field => .field_builtin_ptr,
+<<<<<<< HEAD
 >>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+=======
+                    .member => .member_builtin_ptr,
+>>>>>>> 9eaadc9e4a (add `@member` builtin (same as current `@field`))
                 };
                 break :ref try gz.addPlNode(tag, node, Zir.Inst.Bin{
                     .lhs = container_or_container_type,
@@ -9171,7 +9181,11 @@ fn builtinCall(
                     else => unreachable,
 =======
                     .field => .field_builtin_val,
+<<<<<<< HEAD
 >>>>>>> a56032848d (change `@field` behaviour (works only with fields and tags now))
+=======
+                    .member => .member_builtin_val,
+>>>>>>> 9eaadc9e4a (add `@member` builtin (same as current `@field`))
                 };
                 const result = try gz.addPlNode(tag, node, Zir.Inst.Bin{
                     .lhs = container_or_container_type,
@@ -9259,7 +9273,7 @@ fn builtinCall(
                         return astgen.failNode(params[0], "use of undeclared identifier '{s}'", .{ident_name});
                     }
                 },
-                .field_access => {
+                .member_access => {
                     const namespace_node = node_datas[params[0]].lhs;
                     namespace = try typeExpr(gz, scope, namespace_node);
                     const dot_token = main_tokens[params[0]];
@@ -10130,7 +10144,7 @@ fn calleeExpr(
 
     const tag = tree.nodes.items(.tag)[node];
     switch (tag) {
-        .field_access => {
+        .member_access => {
             const main_tokens = tree.nodes.items(.main_token);
             const node_datas = tree.nodes.items(.data);
             const object_node = node_datas[node].lhs;
@@ -10287,7 +10301,7 @@ fn nodeMayEvalToError(tree: *const Ast, start_node: Ast.Node.Index) BuiltinFn.Ev
             .@"asm",
             .asm_simple,
             .identifier,
-            .field_access,
+            .member_access,
             .deref,
             .array_access,
             .while_simple,
@@ -10584,7 +10598,7 @@ fn nodeImpliesMoreThanOnePossibleValue(tree: *const Ast, start_node: Ast.Node.In
             .mul_sat,
             .switch_range,
             .for_range,
-            .field_access,
+            .member_access,
             .sub,
             .sub_wrap,
             .sub_sat,
@@ -10831,7 +10845,7 @@ fn nodeImpliesComptimeOnly(tree: *const Ast, start_node: Ast.Node.Index) bool {
             .mul_sat,
             .switch_range,
             .for_range,
-            .field_access,
+            .member_access,
             .sub,
             .sub_wrap,
             .sub_sat,
