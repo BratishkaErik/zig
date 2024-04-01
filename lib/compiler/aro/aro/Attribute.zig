@@ -65,7 +65,7 @@ pub fn requiredArgCount(attr: Tag) u32 {
         inline else => |tag| {
             comptime var needed = 0;
             comptime {
-                const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+                const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
                 for (fields) |arg_field| {
                     if (!mem.eql(u8, arg_field.name, "__name_tok") and @typeInfo(arg_field.type) != .Optional) needed += 1;
                 }
@@ -81,7 +81,7 @@ pub fn maxArgCount(attr: Tag) u32 {
         inline else => |tag| {
             comptime var max = 0;
             comptime {
-                const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+                const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
                 for (fields) |arg_field| {
                     if (!mem.eql(u8, arg_field.name, "__name_tok")) max += 1;
                 }
@@ -106,7 +106,7 @@ pub const Formatting = struct {
         switch (attr) {
             .calling_convention => unreachable,
             inline else => |tag| {
-                const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+                const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
 
                 if (fields.len == 0) unreachable;
                 const Unwrapped = UnwrapOptional(fields[0].type);
@@ -123,7 +123,7 @@ pub const Formatting = struct {
         switch (attr) {
             .calling_convention => unreachable,
             inline else => |tag| {
-                const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+                const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
 
                 if (fields.len == 0) unreachable;
                 const Unwrapped = UnwrapOptional(fields[0].type);
@@ -148,7 +148,7 @@ pub fn wantsIdentEnum(attr: Tag) bool {
     switch (attr) {
         .calling_convention => return false,
         inline else => |tag| {
-            const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+            const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
 
             if (fields.len == 0) return false;
             const Unwrapped = UnwrapOptional(fields[0].type);
@@ -162,7 +162,7 @@ pub fn wantsIdentEnum(attr: Tag) bool {
 pub fn diagnoseIdent(attr: Tag, arguments: *Arguments, ident: []const u8) ?Diagnostics.Message {
     switch (attr) {
         inline else => |tag| {
-            const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+            const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
             if (fields.len == 0) unreachable;
             const Unwrapped = UnwrapOptional(fields[0].type);
             if (@typeInfo(Unwrapped) != .Enum) unreachable;
@@ -181,7 +181,7 @@ pub fn diagnoseIdent(attr: Tag, arguments: *Arguments, ident: []const u8) ?Diagn
 pub fn wantsAlignment(attr: Tag, idx: usize) bool {
     switch (attr) {
         inline else => |tag| {
-            const fields = std.meta.fields(@field(attributes, @tagName(tag)));
+            const fields = std.meta.fields(@decl(attributes, @tagName(tag)));
             if (fields.len == 0) return false;
 
             return switch (idx) {
@@ -195,7 +195,7 @@ pub fn wantsAlignment(attr: Tag, idx: usize) bool {
 pub fn diagnoseAlignment(attr: Tag, arguments: *Arguments, arg_idx: u32, res: Parser.Result, p: *Parser) !?Diagnostics.Message {
     switch (attr) {
         inline else => |tag| {
-            const arg_fields = std.meta.fields(@field(attributes, @tagName(tag)));
+            const arg_fields = std.meta.fields(@decl(attributes, @tagName(tag)));
             if (arg_fields.len == 0) unreachable;
 
             switch (arg_idx) {
@@ -309,7 +309,7 @@ pub fn diagnose(attr: Tag, arguments: *Arguments, arg_idx: u32, res: Parser.Resu
                 .tag = .attribute_too_many_args,
                 .extra = .{ .attr_arg_count = .{ .attribute = attr, .expected = max_arg_count } },
             };
-            const arg_fields = std.meta.fields(@field(attributes, decl.name));
+            const arg_fields = std.meta.fields(@decl(attributes, decl.name));
             switch (arg_idx) {
                 inline 0...arg_fields.len - 1 => |arg_i| {
                     return diagnoseField(decl, arg_fields[arg_i], UnwrapOptional(arg_fields[arg_i].type), arguments, res, node, p);
@@ -646,7 +646,7 @@ pub const Arguments = blk: {
     for (decls, &union_fields) |decl, *field| {
         field.* = .{
             .name = decl.name ++ "",
-            .type = @field(attributes, decl.name),
+            .type = @decl(attributes, decl.name),
             .alignment = 0,
         };
     }
@@ -663,16 +663,16 @@ pub const Arguments = blk: {
 
 pub fn ArgumentsForTag(comptime tag: Tag) type {
     const decl = @typeInfo(attributes).Struct.decls[@intFromEnum(tag)];
-    return @field(attributes, decl.name);
+    return @decl(attributes, decl.name);
 }
 
 pub fn initArguments(tag: Tag, name_tok: TokenIndex) Arguments {
     switch (tag) {
         inline else => |arg_tag| {
-            const union_element = @field(attributes, @tagName(arg_tag));
+            const union_element = @decl(attributes, @tagName(arg_tag));
             const init = std.mem.zeroInit(union_element, .{});
             var args = @unionInit(Arguments, @tagName(arg_tag), init);
-            if (@hasField(@field(attributes, @tagName(arg_tag)), "__name_tok")) {
+            if (@hasField(@decl(attributes, @tagName(arg_tag)), "__name_tok")) {
                 @field(args, @tagName(arg_tag)).__name_tok = name_tok;
             }
             return args;

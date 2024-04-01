@@ -24078,13 +24078,13 @@ fn resolveBuiltinEnum(
     zir_ref: Zir.Inst.Ref,
     comptime name: []const u8,
     reason: NeededComptimeReason,
-) CompileError!@field(std.builtin, name) {
+) CompileError!@decl(std.builtin, name) {
     const mod = sema.mod;
     const ty = try sema.getBuiltinType(name);
     const air_ref = try sema.resolveInst(zir_ref);
     const coerced = try sema.coerce(block, ty, air_ref, src);
     const val = try sema.resolveConstDefinedValue(block, src, coerced, reason);
-    return mod.toEnum(@field(std.builtin, name), val);
+    return mod.toEnum(@decl(std.builtin, name), val);
 }
 
 fn resolveAtomicOrder(

@@ -1854,7 +1854,7 @@ pub fn lazyDependency(b: *Build, name: []const u8, args: anytype) ?*Dependency {
 
     inline for (@typeInfo(deps.packages).Struct.decls) |decl| {
         if (mem.eql(u8, decl.name, pkg_hash)) {
-            const pkg = @field(deps.packages, decl.name);
+            const pkg = @decl(deps.packages, decl.name);
             const available = !@hasDecl(pkg, "available") or pkg.available;
             if (!available) {
                 markNeededLazyDep(b, pkg_hash);
@@ -1874,7 +1874,7 @@ pub fn dependency(b: *Build, name: []const u8, args: anytype) *Dependency {
 
     inline for (@typeInfo(deps.packages).Struct.decls) |decl| {
         if (mem.eql(u8, decl.name, pkg_hash)) {
-            const pkg = @field(deps.packages, decl.name);
+            const pkg = @decl(deps.packages, decl.name);
             if (@hasDecl(pkg, "available")) {
                 std.debug.panic("dependency '{s}{s}' is marked as lazy in build.zig.zon which means it must use the lazyDependency function instead", .{ b.dep_prefix, name });
             }

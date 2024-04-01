@@ -201,10 +201,10 @@ pub const DecodeState = struct {
         switch (mode) {
             .predefined => {
                 @field(self, field_name).accuracy_log =
-                    @field(types.compressed_block.default_accuracy_log, field_name);
+                    @decl(types.compressed_block.default_accuracy_log, field_name);
 
                 @field(self, field_name).table =
-                    @field(types.compressed_block, "predefined_" ++ field_name ++ "_fse_table");
+                    @decl(types.compressed_block, "predefined_" ++ field_name ++ "_fse_table");
             },
             .rle => {
                 @field(self, field_name).accuracy_log = 0;
@@ -215,8 +215,8 @@ pub const DecodeState = struct {
 
                 const table_size = try decodeFseTable(
                     &bit_reader,
-                    @field(types.compressed_block.table_symbol_count_max, field_name),
-                    @field(types.compressed_block.table_accuracy_log_max, field_name),
+                    @decl(types.compressed_block.table_symbol_count_max, field_name),
+                    @decl(types.compressed_block.table_accuracy_log_max, field_name),
                     @field(self, field_name ++ "_fse_buffer"),
                 );
                 @field(self, field_name).table = .{

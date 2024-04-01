@@ -942,7 +942,7 @@ pub fn declList(comptime Namespace: type, comptime Decl: type) []const *const De
         const decls = declarations(Namespace);
         var array: [decls.len]*const Decl = undefined;
         for (decls, 0..) |decl, i| {
-            array[i] = &@field(Namespace, decl.name);
+            array[i] = &@decl(Namespace, decl.name);
         }
         mem.sort(*const Decl, &array, {}, S.declNameLessThan);
         return &array;
@@ -1119,7 +1119,7 @@ pub inline fn hasFn(comptime T: type, comptime name: []const u8) bool {
     if (!@hasDecl(T, name))
         return false;
 
-    return @typeInfo(@TypeOf(@field(T, name))) == .Fn;
+    return @typeInfo(@TypeOf(@decl(T, name))) == .Fn;
 }
 
 test hasFn {

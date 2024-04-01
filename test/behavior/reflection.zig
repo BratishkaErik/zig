@@ -25,7 +25,7 @@ fn dummy(a: bool, b: i32, c: f32) i32 {
     return 1234;
 }
 
-test "reflection: @field" {
+test "reflection: @field and @decl" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest;
     if (builtin.zig_backend == .stage2_sparc64) return error.SkipZigTest; // TODO
 
@@ -39,12 +39,14 @@ test "reflection: @field" {
     try expect(@field(f, "o" ++ "ne") == f.one);
     try expect(@field(f, "t" ++ "wo") == f.two);
     try expect(@field(f, "th" ++ "ree") == f.three);
-    try expect(@field(Foo, "const" ++ "ant") == Foo.constant);
+    try expect(@decl(Foo, "const" ++ "ant") == Foo.constant);
+
     try expect(@field(Bar, "O" ++ "ne") == Bar.One);
     try expect(@field(Bar, "T" ++ "wo") == Bar.Two);
     try expect(@field(Bar, "Th" ++ "ree") == Bar.Three);
     try expect(@field(Bar, "F" ++ "our") == Bar.Four);
-    try expect(@field(reflection, "dum" ++ "my")(true, 1, 2) == dummy(true, 1, 2));
+    try expect(@decl(reflection, "dum" ++ "my")(true, 1, 2) == dummy(true, 1, 2));
+
     @field(f, "o" ++ "ne") = 4;
     try expect(f.one == 4);
 }

@@ -428,7 +428,7 @@ test null_writer {
 pub fn poll(
     allocator: Allocator,
     comptime StreamEnum: type,
-    files: PollFiles(StreamEnum),
+    Files: PollFiles(StreamEnum),
 ) Poller(StreamEnum) {
     const enum_fields = @typeInfo(StreamEnum).Enum.fields;
     var result: Poller(StreamEnum) = undefined;
@@ -453,10 +453,10 @@ pub fn poll(
             .count = 0,
         };
         if (is_windows) {
-            result.windows.active.handles_buf[i] = @field(files, enum_fields[i].name).handle;
+            result.windows.active.handles_buf[i] = @field(Files, enum_fields[i].name).handle;
         } else {
             result.poll_fds[i] = .{
-                .fd = @field(files, enum_fields[i].name).handle,
+                .fd = @field(Files, enum_fields[i].name).handle,
                 .events = posix.POLL.IN,
                 .revents = undefined,
             };
