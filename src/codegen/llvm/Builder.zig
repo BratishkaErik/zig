@@ -1237,7 +1237,7 @@ pub const Attribute = union(Kind) {
                     var any = false;
                     var remaining: Int = @bitCast(fpclass);
                     inline for (@typeInfo(FpClass).Struct.decls) |decl| {
-                        const pattern: Int = @bitCast(@field(FpClass, decl.name));
+                        const pattern: Int = @bitCast(@decl(FpClass, decl.name));
                         if (remaining & pattern == pattern) {
                             if (!any) {
                                 try writer.writeByte(' ');
@@ -11279,7 +11279,7 @@ fn zeroInitConstAssumeCapacity(self: *Builder, ty: Type) Constant {
         .double,
         .fp128,
         .x86_fp80,
-        => |tag| return @field(Builder, @tagName(tag) ++ "ConstAssumeCapacity")(self, 0.0),
+        => |tag| return @decl(Builder, @tagName(tag) ++ "ConstAssumeCapacity")(self, 0.0),
         .ppc_fp128 => return self.ppc_fp128ConstAssumeCapacity(.{ 0.0, 0.0 }),
         .token => return .none,
         .i1 => return .false,

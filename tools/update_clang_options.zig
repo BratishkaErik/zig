@@ -602,8 +602,8 @@ pub fn main() anyerror!void {
     var llvm_to_zig_cpu_features = std.StringHashMap([]const u8).init(allocator);
 
     inline for (@typeInfo(cpu_targets).Struct.decls) |decl| {
-        const Feature = @field(cpu_targets, decl.name).Feature;
-        const all_features = @field(cpu_targets, decl.name).all_features;
+        const Feature = @decl(cpu_targets, decl.name).Feature;
+        const all_features = @decl(cpu_targets, decl.name).all_features;
 
         for (all_features, 0..) |feat, i| {
             const llvm_name = feat.llvm_name orelse continue;
