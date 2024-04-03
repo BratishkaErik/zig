@@ -383,6 +383,7 @@ const Writer = struct {
             .has_field,
             .field_builtin_val,
             .field_builtin_ptr,
+            .has_member,
             .mod_rem,
             .shl,
             .shl_exact,

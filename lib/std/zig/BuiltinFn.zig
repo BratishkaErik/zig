@@ -57,6 +57,7 @@ pub const Tag = enum {
     frame_size,
     has_decl,
     has_field,
+    has_member,
     import,
     in_comptime,
     int_cast,
@@ -554,6 +555,13 @@ pub const list = list: {
             "@hasField",
             .{
                 .tag = .has_field,
+                .param_count = 2,
+            },
+        },
+        .{
+            "@hasMember",
+            .{
+                .tag = .has_member,
                 .param_count = 2,
             },
         },

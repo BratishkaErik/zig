@@ -1040,6 +1040,14 @@ fn analyzeBodyInner(
             .err_union_payload_unsafe_ptr => try sema.zirErrUnionPayloadPtr(block, inst),
             .error_union_type             => try sema.zirErrorUnionType(block, inst),
             .error_value                  => try sema.zirErrorValue(block, inst),
+            .has_member                   => if (
+                ((sema.zirHasField(block, inst) catch .bool_false) == .bool_true)
+                 or 
+                 ((sema.zirHasDecl(block, inst) catch .bool_false) == .bool_true)
+                )
+                .bool_true
+                else
+                    .bool_false, // TODO
             .member_ptr                   => try sema.zirMemberPtr(block, inst),
             .member_builtin_ptr           => try sema.zirMemberBuiltinRef(block, inst),
             .member_val                   => try sema.zirMemberVal(block, inst),

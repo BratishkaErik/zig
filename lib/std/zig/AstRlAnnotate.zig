@@ -980,6 +980,8 @@ fn builtinCall(astrl: *AstRlAnnotate, block: ?*Block, ri: ResultInfo, node: Ast.
         .has_decl,
         .decl,
         .has_field,
+        .field,
+        .has_member,
         .member,
         => {
             _ = try astrl.expr(args[0], block, ResultInfo.type_only);

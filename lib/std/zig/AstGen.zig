@@ -2668,6 +2668,7 @@ fn addEnsureResult(gz: *GenZir, maybe_unused_result: Zir.Inst.Ref, statement: As
             .elem_ptr_node,
             .elem_val_node,
             .elem_val_imm,
+            .has_member,
             .member_ptr,
             .member_val,
             .member_builtin_ptr,
@@ -9463,8 +9464,9 @@ fn builtinCall(
         => return ptrCast(gz, scope, ri, node),
 
         // zig fmt: off
-        .has_decl  => return hasDeclOrField(gz, scope, ri, node, params[0], params[1], .has_decl),
-        .has_field => return hasDeclOrField(gz, scope, ri, node, params[0], params[1], .has_field),
+        .has_decl   => return hasDeclOrFieldOrMember(gz, scope, ri, node, params[0], params[1], .has_decl),
+        .has_field  => return hasDeclOrFieldOrMember(gz, scope, ri, node, params[0], params[1], .has_field),
+        .has_member => return hasDeclOrFieldOrMember(gz, scope, ri, node, params[0], params[1], .has_member),
 
         .clz         => return bitBuiltin(gz, scope, ri, node, params[0], .clz),
         .ctz         => return bitBuiltin(gz, scope, ri, node, params[0], .ctz),
@@ -9736,7 +9738,7 @@ fn builtinCall(
     }
 }
 
-fn hasDeclOrField(
+fn hasDeclOrFieldOrMember(
     gz: *GenZir,
     scope: *Scope,
     ri: ResultInfo,

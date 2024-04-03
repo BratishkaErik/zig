@@ -445,6 +445,9 @@ pub const Inst = struct {
         /// Uses the `pl_node` union field. Payload is `ExportValue`.
         export_value,
 
+        /// Implements the `@hasMember` builtin.
+        /// Uses the `pl_node` union field. Payload is `Bin`.
+        has_member,
         /// Given a pointer to a struct or object that contains virtual fields, returns a pointer
         /// to the named member. The member name is stored in string_bytes. Used by a.b syntax.
         /// Uses `pl_node` field. The AST node is the a.b syntax. Payload is Member.
@@ -1120,6 +1123,7 @@ pub const Inst = struct {
                 .export_value,
                 .field_ptr,
                 .field_val,
+                .has_member,
                 .member_ptr,
                 .member_val,
                 .member_builtin_ptr,
@@ -1425,6 +1429,7 @@ pub const Inst = struct {
                 .elem_val_imm,
                 .field_ptr,
                 .field_val,
+                .has_member,
                 .member_ptr,
                 .member_val,
                 .member_builtin_ptr,
@@ -1680,6 +1685,7 @@ pub const Inst = struct {
                 .export_value = .pl_node,
                 .field_ptr = .pl_node,
                 .field_val = .pl_node,
+                .has_member = .pl_node,
                 .member_ptr = .pl_node,
                 .member_val = .pl_node,
                 .member_builtin_ptr = .pl_node,
