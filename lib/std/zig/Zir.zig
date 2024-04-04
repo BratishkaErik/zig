@@ -137,7 +137,7 @@ pub const Inst = struct {
     data: Data,
 
     /// These names are used directly as the instruction names in the text format.
-    /// See `data_field_map` for a list of which `Data` fields are used by each `Tag`.
+    /// See `data_tags` for a list of which `Data` fields are used by each `Tag`.
     pub const Tag = enum(u8) {
         /// Arithmetic addition, asserts no integer overflow.
         /// Uses the `pl_node` union field. Payload is `Bin`.
