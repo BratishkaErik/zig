@@ -54,7 +54,7 @@ pub fn wasi_cwd() std.os.wasi.fd_t {
     return cwd_fd;
 }
 
-fn getWasiPreopen(name: []const u8) Compilation.Directory {
+pub fn getWasiPreopen(name: []const u8) Compilation.Directory {
     return .{
         .path = name,
         .handle = .{
@@ -894,7 +894,7 @@ fn buildOutputType(
     var test_name_prefix: ?[]const u8 = null;
     var test_runner_path: ?[]const u8 = null;
     var override_local_cache_dir: ?[]const u8 = try EnvVar.ZIG_LOCAL_CACHE_DIR.get(arena);
-    var override_global_cache_dir: ?[]const u8 = try EnvVar.ZIG_GLOBAL_CACHE_DIR.get(arena);
+    var override_global_cache_dir: ?[]const u8 = null;
     var override_lib_dir: ?[]const u8 = try EnvVar.ZIG_LIB_DIR.get(arena);
     var clang_preprocessor_mode: Compilation.ClangPreprocessorMode = .no;
     var subsystem: ?std.Target.SubSystem = null;
@@ -2699,22 +2699,7 @@ fn buildOutputType(
     };
     defer zig_lib_directory.handle.close();
 
-    var global_cache_directory: Compilation.Directory = l: {
-        if (override_global_cache_dir) |p| {
-            break :l .{
-                .handle = try fs.cwd().makeOpenPath(p, .{}),
-                .path = p,
-            };
-        }
-        if (native_os == .wasi) {
-            break :l getWasiPreopen("/cache");
-        }
-        const p = try introspect.resolveGlobalCacheDir(arena);
-        break :l .{
-            .handle = try fs.cwd().makeOpenPath(p, .{}),
-            .path = p,
-        };
-    };
+    var global_cache_directory: Compilation.Directory = try introspect.resolveGlobalCacheDir(arena, override_global_cache_dir);
     defer global_cache_directory.handle.close();
 
     if (linker_optimization) |o| {
@@ -4740,7 +4725,7 @@ fn cmdBuild(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
 
     var build_file: ?[]const u8 = null;
     var override_lib_dir: ?[]const u8 = try EnvVar.ZIG_LIB_DIR.get(arena);
-    var override_global_cache_dir: ?[]const u8 = try EnvVar.ZIG_GLOBAL_CACHE_DIR.get(arena);
+    var override_global_cache_dir: ?[]const u8 = null;
     var override_local_cache_dir: ?[]const u8 = try EnvVar.ZIG_LOCAL_CACHE_DIR.get(arena);
     var override_build_runner: ?[]const u8 = try EnvVar.ZIG_BUILD_RUNNER.get(arena);
     var child_argv = std.ArrayList([]const u8).init(arena);
@@ -4933,13 +4918,7 @@ fn cmdBuild(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
     });
     child_argv.items[argv_index_build_file] = build_root.directory.path orelse cwd_path;
 
-    var global_cache_directory: Compilation.Directory = l: {
-        const p = override_global_cache_dir orelse try introspect.resolveGlobalCacheDir(arena);
-        break :l .{
-            .handle = try fs.cwd().makeOpenPath(p, .{}),
-            .path = p,
-        };
-    };
+    var global_cache_directory: Compilation.Directory = try introspect.resolveGlobalCacheDir(arena, override_global_cache_dir);
     defer global_cache_directory.handle.close();
 
     child_argv.items[argv_index_global_cache_dir] = global_cache_directory.path orelse cwd_path;
@@ -5365,7 +5344,6 @@ fn jitCmd(
         .ReleaseFast;
     const strip = optimize_mode != .Debug;
     const override_lib_dir: ?[]const u8 = try EnvVar.ZIG_LIB_DIR.get(arena);
-    const override_global_cache_dir: ?[]const u8 = try EnvVar.ZIG_GLOBAL_CACHE_DIR.get(arena);
 
     var zig_lib_directory: Compilation.Directory = if (override_lib_dir) |lib_dir| .{
         .path = lib_dir,
@@ -5377,13 +5355,7 @@ fn jitCmd(
     };
     defer zig_lib_directory.handle.close();
 
-    var global_cache_directory: Compilation.Directory = l: {
-        const p = override_global_cache_dir orelse try introspect.resolveGlobalCacheDir(arena);
-        break :l .{
-            .handle = try fs.cwd().makeOpenPath(p, .{}),
-            .path = p,
-        };
-    };
+    var global_cache_directory: Compilation.Directory = try introspect.resolveGlobalCacheDir(arena, null);
     defer global_cache_directory.handle.close();
 
     var thread_pool: ThreadPool = undefined;
@@ -6910,7 +6882,7 @@ fn cmdFetch(
     const work_around_btrfs_bug = native_os == .linux and
         EnvVar.ZIG_BTRFS_WORKAROUND.isSet();
     var opt_path_or_url: ?[]const u8 = null;
-    var override_global_cache_dir: ?[]const u8 = try EnvVar.ZIG_GLOBAL_CACHE_DIR.get(arena);
+    var override_global_cache_dir: ?[]const u8 = null;
     var debug_hash: bool = false;
     var save: union(enum) {
         no,
@@ -6967,13 +6939,7 @@ fn cmdFetch(
     const root_prog_node = progress.start("Fetch", 0);
     defer root_prog_node.end();
 
-    var global_cache_directory: Compilation.Directory = l: {
-        const p = override_global_cache_dir orelse try introspect.resolveGlobalCacheDir(arena);
-        break :l .{
-            .handle = try fs.cwd().makeOpenPath(p, .{}),
-            .path = p,
-        };
-    };
+    var global_cache_directory: Compilation.Directory = try introspect.resolveGlobalCacheDir(arena, override_global_cache_dir);
     defer global_cache_directory.handle.close();
 
     var job_queue: Package.Fetch.JobQueue = .{

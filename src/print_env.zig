@@ -15,7 +15,7 @@ pub fn cmdEnv(arena: Allocator, args: []const []const u8, stdout: std.fs.File.Wr
 
     const zig_std_dir = try std.fs.path.join(arena, &[_][]const u8{ zig_lib_directory.path.?, "std" });
 
-    const global_cache_dir = try introspect.resolveGlobalCacheDir(arena);
+    const global_cache_dir = try introspect.resolveGlobalCacheDir(arena, null);
 
     const host = try std.zig.system.resolveTargetQuery(.{});
     const triple = try host.zigTriple(arena);

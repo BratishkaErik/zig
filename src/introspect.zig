@@ -6,6 +6,8 @@ const fs = std.fs;
 const Compilation = @import("Compilation.zig");
 const build_options = @import("build_options");
 
+const getWasiPreopen = @import("main.zig").getWasiPreopen;
+
 /// Returns the sub_path that worked, or `null` if none did.
 /// The path of the returned Directory is relative to `base`.
 /// The handle of the returned Directory is open.
@@ -79,24 +81,63 @@ pub fn findZigLibDirFromSelfExe(
     return error.FileNotFound;
 }
 
-/// Caller owns returned memory.
-pub fn resolveGlobalCacheDir(allocator: mem.Allocator) ![]u8 {
-    if (builtin.os.tag == .wasi)
-        @compileError("on WASI the global cache dir must be resolved with preopens");
-
-    if (try std.zig.EnvVar.ZIG_GLOBAL_CACHE_DIR.get(allocator)) |value| return value;
-
-    const appname = "zig";
-
-    if (builtin.os.tag != .windows) {
-        if (std.zig.EnvVar.XDG_CACHE_HOME.getPosix()) |cache_root| {
-            return fs.path.join(allocator, &[_][]const u8{ cache_root, appname });
-        } else if (std.zig.EnvVar.HOME.getPosix()) |home| {
-            return fs.path.join(allocator, &[_][]const u8{ home, ".cache", appname });
-        }
+/// Returns global cache directory.
+/// `path` field is an absolute path in all cases except WASI
+/// (WASI does not have concept of absolute pathes).
+///
+/// Caller owns:
+///  * `handle` field,
+///  * if host OS is not WASI, also owns `path` field.
+pub fn resolveGlobalCacheDir(allocator: mem.Allocator, override_from_arg: ?[]const u8) !std.Build.Cache.Directory {
+    if (builtin.os.tag == .wasi) {
+        // Simplified logic, WASI does not have concept of absolute pathes.
+        if (override_from_arg) |override|
+            return .{
+                .path = override,
+                .handle = try fs.cwd().makeOpenPath(override, .{}),
+            }
+        else
+            return getWasiPreopen("/cache");
     }
 
-    return fs.getAppDataDir(allocator, appname);
+    const original_path = orig: {
+        if (override_from_arg) |override| break :orig try allocator.dupe(u8, override);
+
+        const override_from_env = try std.zig.EnvVar.ZIG_GLOBAL_CACHE_DIR.get(allocator);
+        if (override_from_env) |override| break :orig override;
+
+        const appname = "zig";
+
+        if (builtin.os.tag != .windows) {
+            if (std.zig.EnvVar.XDG_CACHE_HOME.getPosix()) |cache_root|
+                break :orig try fs.path.join(allocator, &[_][]const u8{ cache_root, appname })
+            else if (std.zig.EnvVar.HOME.getPosix()) |home|
+                break :orig try fs.path.join(allocator, &[_][]const u8{ home, ".cache", appname });
+        }
+
+        break :orig try fs.getAppDataDir(allocator, appname);
+    };
+
+    std.log.err("original_path = {s}", .{original_path});
+    const absolute_path = if (fs.path.isAbsolute(original_path))
+        original_path
+    else absolute: {
+        std.log.err("original_path is not absolute! Converting to absolute...", .{});
+        defer allocator.free(original_path);
+
+        const cwd_path = try std.process.getCwdAlloc(allocator);
+        defer allocator.free(cwd_path);
+        std.log.err("cwd_path = {s}", .{cwd_path});
+
+        std.log.err("Converting...", .{});
+        break :absolute try fs.path.resolve(allocator, &.{ cwd_path, original_path });
+    };
+    std.log.err("absolute_path = {s}", .{absolute_path});
+
+    return .{
+        .path = absolute_path,
+        .handle = try fs.cwd().makeOpenPath(absolute_path, .{}),
+    };
 }
 
 /// Similar to std.fs.path.resolve, with a few important differences:
