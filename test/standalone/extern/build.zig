@@ -6,23 +6,31 @@ pub fn build(b: *std.Build) void {
 
     const optimize: std.builtin.OptimizeMode = .Debug;
 
-    const obj = b.addObject(.{
+    const obj = b.addObject2(.{
         .name = "exports",
-        .root_source_file = b.path("exports.zig"),
-        .target = b.graph.host,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("exports.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
     });
-    const shared = b.addSharedLibrary(.{
+    const shared = b.addLibrary(.{
         .name = "shared",
-        .target = b.graph.host,
-        .optimize = optimize,
-        .link_libc = true,
+        .root_module = b.createModule(.{
+            .target = b.graph.host,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+        .linkage = .dynamic,
     });
     if (b.graph.host.result.abi == .msvc) shared.root_module.addCMacro("API", "__declspec(dllexport)");
     shared.addCSourceFile(.{ .file = b.path("shared.c"), .flags = &.{} });
-    const test_exe = b.addTest(.{
-        .root_source_file = b.path("main.zig"),
-        .optimize = optimize,
+    const test_exe = b.addTest2(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("main.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
     });
     test_exe.addObject(obj);
     test_exe.linkLibrary(shared);
