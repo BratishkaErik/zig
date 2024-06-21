@@ -4610,7 +4610,7 @@ fn cmdInit(gpa: Allocator, arena: Allocator, args: []const []const u8) !void {
         Package.build_zig_basename,
         Package.Manifest.basename,
         "src" ++ s ++ "main.zig",
-        "src" ++ s ++ "root.zig",
+        "src" ++ s ++ "export.zig",
     };
     var ok_count: usize = 0;
 
