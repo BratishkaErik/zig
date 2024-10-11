@@ -14,14 +14,13 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    const shared = b.addLibrary(.{
+    const shared = b.addSharedLibrary2(.{
         .name = "shared",
         .root_module = b.createModule(.{
             .target = b.graph.host,
             .optimize = optimize,
             .link_libc = true,
         }),
-        .linkage = .dynamic,
     });
     if (b.graph.host.result.abi == .msvc) shared.root_module.addCMacro("API", "__declspec(dllexport)");
     shared.addCSourceFile(.{ .file = b.path("shared.c"), .flags = &.{} });

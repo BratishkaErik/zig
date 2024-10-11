@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
 
     if (builtin.os.tag == .wasi) return;
 
-    const lib = b.addLibrary(.{
+    const lib = b.addSharedLibrary2(.{
         .name = "add",
         .root_module = b.createModule(.{
             .root_source_file = b.path("add.zig"),
@@ -18,7 +18,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
         .version = .{ .major = 1, .minor = 0, .patch = 0 },
-        .linkage = .dynamic,
     });
 
     const main = b.addExecutable2(.{
