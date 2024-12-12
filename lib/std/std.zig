@@ -152,7 +152,15 @@ pub const Options = struct {
     http_enable_ssl_key_log_file: bool = @import("builtin").mode == .Debug,
 
     side_channels_mitigations: crypto.SideChannelsMitigations = crypto.default_side_channels_mitigations,
+
+    more_compile_errors: EnumSet(enum {
+        deprecations,
+    }) = .initEmpty(),
 };
+
+pub fn deprecated(comptime msg: []const u8, value: anytype) @TypeOf(value) {
+    comptime if (options.more_compile_errors.contains(.deprecations)) @compileError("std.deprecated: " ++ msg) else return value;
+}
 
 // This forces the start.zig file to be imported, and the comptime logic inside that
 // file decides whether to export any appropriate start symbols, and call main.
