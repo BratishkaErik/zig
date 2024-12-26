@@ -202,23 +202,14 @@ test "Allocator.resize" {
 /// dest.len must be >= source.len.
 /// If the slices overlap, dest.ptr must be <= src.ptr.
 pub fn copyForwards(comptime T: type, dest: []T, source: []const T) void {
-    for (dest[0..source.len], source) |*d, s| d.* = s;
+    return std.slice(T).copyForwards(dest, source);
 }
 
 /// Copy all of source into dest at position 0.
 /// dest.len must be >= source.len.
 /// If the slices overlap, dest.ptr must be >= src.ptr.
 pub fn copyBackwards(comptime T: type, dest: []T, source: []const T) void {
-    // TODO instead of manually doing this check for the whole array
-    // and turning off runtime safety, the compiler should detect loops like
-    // this and automatically omit safety checks for loops
-    @setRuntimeSafety(false);
-    assert(dest.len >= source.len);
-    var i = source.len;
-    while (i > 0) {
-        i -= 1;
-        dest[i] = source[i];
-    }
+    return std.slice(T).copyForwards(dest, source);
 }
 
 /// Generally, Zig users are encouraged to explicitly initialize all fields of a struct explicitly rather than using this function.
@@ -597,15 +588,7 @@ pub fn sortUnstableContext(a: usize, b: usize, context: anytype) void {
 
 /// Compares two slices of numbers lexicographically. O(n).
 pub fn order(comptime T: type, lhs: []const T, rhs: []const T) math.Order {
-    const n = @min(lhs.len, rhs.len);
-    for (lhs[0..n], rhs[0..n]) |lhs_elem, rhs_elem| {
-        switch (math.order(lhs_elem, rhs_elem)) {
-            .eq => continue,
-            .lt => return .lt,
-            .gt => return .gt,
-        }
-    }
-    return math.order(lhs.len, rhs.len);
+    return std.slice(T).order(lhs, rhs);
 }
 
 /// Compares two many-item pointers with NUL-termination lexicographically.
@@ -613,14 +596,6 @@ pub fn orderZ(comptime T: type, lhs: [*:0]const T, rhs: [*:0]const T) math.Order
     var i: usize = 0;
     while (lhs[i] == rhs[i] and lhs[i] != 0) : (i += 1) {}
     return math.order(lhs[i], rhs[i]);
-}
-
-test order {
-    try testing.expect(order(u8, "abcd", "bee") == .lt);
-    try testing.expect(order(u8, "abc", "abc") == .eq);
-    try testing.expect(order(u8, "abc", "abc0") == .lt);
-    try testing.expect(order(u8, "", "") == .eq);
-    try testing.expect(order(u8, "", "a") == .lt);
 }
 
 test orderZ {
@@ -633,15 +608,7 @@ test orderZ {
 
 /// Returns true if lhs < rhs, false otherwise
 pub fn lessThan(comptime T: type, lhs: []const T, rhs: []const T) bool {
-    return order(T, lhs, rhs) == .lt;
-}
-
-test lessThan {
-    try testing.expect(lessThan(u8, "abcd", "bee"));
-    try testing.expect(!lessThan(u8, "abc", "abc"));
-    try testing.expect(lessThan(u8, "abc", "abc0"));
-    try testing.expect(!lessThan(u8, "", ""));
-    try testing.expect(lessThan(u8, "", "a"));
+    return std.slice(T).lessThan(lhs, rhs);
 }
 
 const eqlBytes_allowed = switch (builtin.zig_backend) {
@@ -755,20 +722,7 @@ fn eqlBytes(a: []const u8, b: []const u8) bool {
 /// Compares two slices and returns the index of the first inequality.
 /// Returns null if the slices are equal.
 pub fn indexOfDiff(comptime T: type, a: []const T, b: []const T) ?usize {
-    const shortest = @min(a.len, b.len);
-    if (a.ptr == b.ptr)
-        return if (a.len == b.len) null else shortest;
-    var index: usize = 0;
-    while (index < shortest) : (index += 1) if (a[index] != b[index]) return index;
-    return if (a.len == b.len) null else shortest;
-}
-
-test indexOfDiff {
-    try testing.expectEqual(indexOfDiff(u8, "one", "one"), null);
-    try testing.expectEqual(indexOfDiff(u8, "one two", "one"), 3);
-    try testing.expectEqual(indexOfDiff(u8, "one", "one two"), 3);
-    try testing.expectEqual(indexOfDiff(u8, "one twx", "one two"), 6);
-    try testing.expectEqual(indexOfDiff(u8, "xne", "one"), 0);
+    return std.slice(T).indexOfDiff(a, b);
 }
 
 /// Takes a sentinel-terminated pointer and returns a slice preserving pointer attributes.
@@ -1167,17 +1121,12 @@ test "indexOfSentinel vector paths" {
 
 /// Returns true if all elements in a slice are equal to the scalar value provided
 pub fn allEqual(comptime T: type, slice: []const T, scalar: T) bool {
-    for (slice) |item| {
-        if (item != scalar) return false;
-    }
-    return true;
+    return std.slice(T).allEqual(slice, scalar);
 }
 
 /// Remove a set of values from the beginning of a slice.
 pub fn trimLeft(comptime T: type, slice: []const T, values_to_strip: []const T) []const T {
-    var begin: usize = 0;
-    while (begin < slice.len and indexOfScalar(T, values_to_strip, slice[begin]) != null) : (begin += 1) {}
-    return slice[begin..];
+    return std.slice(T).trimLeft(slice, values_to_strip);
 }
 
 /// Remove a set of values from the end of a slice.
