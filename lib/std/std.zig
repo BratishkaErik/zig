@@ -81,6 +81,7 @@ pub const once = @import("once.zig").once;
 pub const pdb = @import("pdb.zig");
 pub const posix = @import("posix.zig");
 pub const process = @import("process.zig");
+pub const slice = @import("slice.zig").slice;
 pub const sort = @import("sort.zig");
 pub const simd = @import("simd.zig");
 pub const ascii = @import("ascii.zig");
