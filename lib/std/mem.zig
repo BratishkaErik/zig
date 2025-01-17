@@ -36,7 +36,8 @@ pub const page_size = switch (builtin.cpu.arch) {
 /// which need to be updated.
 pub const byte_size_in_bits = 8;
 
-pub const Allocator = @import("mem/Allocator.zig");
+/// Deprecated: use `std.Allocator` instead.
+pub const Allocator = std.Allocator;
 
 /// Detects and asserts if the std.mem.Allocator interface is violated by the caller
 /// or the allocator.

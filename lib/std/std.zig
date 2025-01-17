@@ -1,3 +1,4 @@
+pub const Allocator = @import("Allocator.zig");
 pub const ArrayHashMap = array_hash_map.ArrayHashMap;
 pub const ArrayHashMapUnmanaged = array_hash_map.ArrayHashMapUnmanaged;
 pub const ArrayList = @import("array_list.zig").ArrayList;
